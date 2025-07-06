@@ -21,11 +21,11 @@ import ExperimentsPage from "./pages/ExperimentsPage";
 import ResultsPage from "./pages/ResultsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 
-// Add Inter font import to the document head
+// Add Red Hat Display font import to the document head
 if (typeof document !== "undefined") {
   const fontLink = document.createElement("link");
   fontLink.href =
-    "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap";
+    "https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700;900&display=swap";
   fontLink.rel = "stylesheet";
   document.head.appendChild(fontLink);
 }
@@ -55,7 +55,8 @@ const theme = createTheme({
     borderRadius: 1,
   },
   typography: {
-    fontFamily: 'Inter, Roboto, "Helvetica Neue", Arial, sans-serif',
+    fontFamily:
+      'Red Hat Display, Inter, Roboto, "Helvetica Neue", Arial, sans-serif',
     h4: {
       fontWeight: 700,
       letterSpacing: "-0.5px",

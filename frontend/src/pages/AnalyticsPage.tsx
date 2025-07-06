@@ -179,7 +179,7 @@ const AnalyticsPage: React.FC = () => {
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2}>
-                    <Science sx={{ fontSize: 36, color: "#00e0d3" }} />
+                    <Science sx={{ fontSize: 36, color: "#4a9eff" }} />
                     <Box>
                       <Typography
                         variant="h4"
@@ -201,7 +201,7 @@ const AnalyticsPage: React.FC = () => {
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2}>
-                    <CheckCircle sx={{ fontSize: 36, color: "#00e0d3" }} />
+                    <CheckCircle sx={{ fontSize: 36, color: "#4a9eff" }} />
                     <Box>
                       <Typography
                         variant="h4"
@@ -223,7 +223,7 @@ const AnalyticsPage: React.FC = () => {
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2}>
-                    <Storage sx={{ fontSize: 36, color: "#00e0d3" }} />
+                    <Storage sx={{ fontSize: 36, color: "#4a9eff" }} />
                     <Box>
                       <Typography
                         variant="h4"
@@ -263,7 +263,7 @@ const AnalyticsPage: React.FC = () => {
                       }}
                     >
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <Speed sx={{ color: "#00e0d3" }} />
+                        <Speed sx={{ color: "#4a9eff" }} />
                         <Typography variant="body2" color="text.secondary">
                           Avg Makespan
                         </Typography>
@@ -285,7 +285,7 @@ const AnalyticsPage: React.FC = () => {
                       }}
                     >
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <Schedule sx={{ color: "#00e0d3" }} />
+                        <Schedule sx={{ color: "#4a9eff" }} />
                         <Typography variant="body2" color="text.secondary">
                           Avg Waiting Time
                         </Typography>
@@ -307,7 +307,7 @@ const AnalyticsPage: React.FC = () => {
                       }}
                     >
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <Timeline sx={{ color: "#00e0d3" }} />
+                        <Timeline sx={{ color: "#4a9eff" }} />
                         <Typography variant="body2" color="text.secondary">
                           Avg Turnaround Time
                         </Typography>
@@ -329,7 +329,7 @@ const AnalyticsPage: React.FC = () => {
                       }}
                     >
                       <Stack direction="row" alignItems="center" spacing={1}>
-                        <TrendingUp sx={{ color: "#00e0d3" }} />
+                        <TrendingUp sx={{ color: "#4a9eff" }} />
                         <Typography variant="body2" color="text.secondary">
                           Avg Resource Utilization
                         </Typography>
@@ -404,7 +404,7 @@ const AnalyticsPage: React.FC = () => {
                       <Typography
                         variant="h6"
                         fontWeight={700}
-                        sx={{ color: "#00e0d3" }}
+                        sx={{ color: "#4a9eff" }}
                       >
                         {analyticsData.success_rate}%
                       </Typography>

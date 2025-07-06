@@ -78,35 +78,28 @@ const Layout: React.FC = () => {
 
   const drawer = (
     <div>
-      <Toolbar sx={{ minHeight: 72, px: 2 }}>
-        <Box sx={{ display: "flex", alignItems: "center", width: "100%" }}>
-          <Box
-            sx={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background: "linear-gradient(135deg, #4a9eff 0%, #2d3748 100%)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              mr: 1.5,
-            }}
-          >
+      <Toolbar sx={{ minHeight: 72, px: 2, justifyContent: "center" }}>
+        <Box
+          sx={{
+            width: "100%",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <a href="/">
             <img
-              src="/logo192.png"
-              alt="Logo"
-              style={{ width: 24, height: 24 }}
+              src="/src/assets/batweb-title-logo-white.png"
+              alt="BatSim Portal"
+              style={{
+                maxWidth: 180,
+                width: "100%",
+                height: "auto",
+                display: "block",
+                margin: "0 auto",
+              }}
             />
-          </Box>
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            fontWeight={700}
-            letterSpacing={1}
-          >
-            BatSim Portal
-          </Typography>
+          </a>
         </Box>
       </Toolbar>
       <Divider sx={{ borderColor: "rgba(255,255,255,0.08)" }} />

@@ -77,7 +77,7 @@ const PlatformsPage: React.FC = () => {
               >
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2} mb={2}>
-                    <Computer sx={{ fontSize: 36, color: "#00e0d3" }} />
+                    <Computer sx={{ fontSize: 36, color: "#4a9eff" }} />
                     <Box>
                       <Typography
                         variant="h6"
