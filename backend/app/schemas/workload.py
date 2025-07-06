@@ -25,6 +25,9 @@ class WorkloadInDB(WorkloadBase):
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    nb_res: Optional[int] = None
+    jobs: Optional[list] = None
+    profiles: Optional[dict] = None
 
     class Config:
         from_attributes = True

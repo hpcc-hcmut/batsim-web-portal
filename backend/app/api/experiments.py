@@ -1,7 +1,13 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+import os
+import json
+import subprocess
+import docker
+from datetime import datetime
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.user import User
 from app.models.experiment import Experiment, ExperimentStatus
 from app.models.scenario import Scenario
@@ -11,6 +17,7 @@ from app.schemas.experiment import (
     ExperimentCreate,
     ExperimentUpdate,
     ExperimentWithDetails,
+    ExperimentStatusUpdate,
 )
 from app.api.auth import get_current_user
 
@@ -30,10 +37,6 @@ def get_experiments(
         exp_dict = ExperimentWithDetails.from_orm(exp)
         if exp.scenario:
             exp_dict.scenario_name = exp.scenario.name
-            if exp.scenario.workload:
-                exp_dict.workload_name = exp.scenario.workload.name
-            if exp.scenario.platform:
-                exp_dict.platform_name = exp.scenario.platform.name
         if exp.strategy:
             exp_dict.strategy_name = exp.strategy.name
         if exp.creator:
@@ -54,10 +57,6 @@ def get_experiment(
     exp_dict = ExperimentWithDetails.from_orm(exp)
     if exp.scenario:
         exp_dict.scenario_name = exp.scenario.name
-        if exp.scenario.workload:
-            exp_dict.workload_name = exp.scenario.workload.name
-        if exp.scenario.platform:
-            exp_dict.platform_name = exp.scenario.platform.name
     if exp.strategy:
         exp_dict.strategy_name = exp.strategy.name
     if exp.creator:
@@ -86,7 +85,9 @@ def create_experiment(
         scenario_id=experiment_create.scenario_id,
         strategy_id=experiment_create.strategy_id,
         status=ExperimentStatus.PENDING,
-        config=str(experiment_create.config) if experiment_create.config else None,
+        config=(
+            json.dumps(experiment_create.config) if experiment_create.config else None
+        ),
         created_by=current_user.id,
     )
     db.add(exp)
@@ -130,3 +131,117 @@ def delete_experiment(
     db.delete(exp)
     db.commit()
     return {"message": "Experiment deleted successfully"}
+
+
+@router.post("/{experiment_id}/start")
+def start_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Start an experiment by running batsim and pybatsim"""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    if exp.status != ExperimentStatus.PENDING:
+        raise HTTPException(
+            status_code=400, detail="Experiment can only be started from PENDING status"
+        )
+
+    try:
+        # Create simulation directory
+        simulation_dir = os.path.join(
+            settings.STORAGE_PATH, "experiments", f"exp_{exp.id}"
+        )
+        os.makedirs(simulation_dir, exist_ok=True)
+
+        # Get platform and workload from scenario
+        if not exp.scenario or not exp.scenario.platform or not exp.scenario.workload:
+            raise HTTPException(
+                status_code=400, detail="Invalid scenario configuration"
+            )
+
+        platform = exp.scenario.platform
+        workload = exp.scenario.workload
+
+        # Copy platform and workload files to simulation directory
+        platform_file = os.path.join(simulation_dir, "platform.xml")
+        workload_file = os.path.join(simulation_dir, "workload.json")
+        strategy_file = os.path.join(simulation_dir, "strategy.py")
+
+        # Copy files (simplified - in real implementation, you'd copy the actual files)
+        # For now, we'll just create placeholder files
+        with open(platform_file, "w") as f:
+            f.write(f"# Platform file for experiment {exp.id} - {platform.name}")
+        with open(workload_file, "w") as f:
+            f.write(f"# Workload file for experiment {exp.id} - {workload.name}")
+        with open(strategy_file, "w") as f:
+            f.write(f"# Strategy file for experiment {exp.id} - {exp.strategy.name}")
+
+        # Update experiment status
+        exp.status = ExperimentStatus.RUNNING
+        exp.start_time = datetime.now()
+        exp.simulation_dir = simulation_dir
+        db.commit()
+
+        # TODO: In a real implementation, you would:
+        # 1. Start batsim container with platform and workload
+        # 2. Start pybatsim container with strategy
+        # 3. Monitor the execution
+        # 4. Update progress and logs
+
+        return {
+            "message": "Experiment started successfully",
+            "simulation_dir": simulation_dir,
+        }
+
+    except Exception as e:
+        exp.status = ExperimentStatus.FAILED
+        db.commit()
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start experiment: {str(e)}"
+        )
+
+
+@router.post("/{experiment_id}/stop")
+def stop_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Stop a running experiment"""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    if exp.status != ExperimentStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Experiment is not running")
+
+    # TODO: Stop containers and cleanup
+    exp.status = ExperimentStatus.CANCELLED
+    exp.end_time = datetime.now()
+    db.commit()
+
+    return {"message": "Experiment stopped successfully"}
+
+
+@router.get("/{experiment_id}/status")
+def get_experiment_status(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get current status and progress of an experiment"""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    return {
+        "status": exp.status,
+        "progress_percentage": exp.progress_percentage,
+        "completed_jobs": exp.completed_jobs,
+        "total_jobs": exp.total_jobs,
+        "start_time": exp.start_time,
+        "end_time": exp.end_time,
+    }

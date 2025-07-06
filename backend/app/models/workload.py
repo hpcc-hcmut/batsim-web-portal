@@ -16,6 +16,9 @@ class Workload(Base):
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    nb_res = Column(Integer, nullable=True)
+    jobs = Column(Text, nullable=True)  # Store as JSON string
+    profiles = Column(Text, nullable=True)  # Store as JSON string
 
     # Relationships
     creator = relationship("User", back_populates="workloads")

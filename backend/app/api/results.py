@@ -3,6 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
+import csv
+import json
+import os
 from app.core.database import get_db
 from app.models.user import User
 from app.models.result import Result
@@ -207,9 +210,57 @@ def create_result(
         .filter(Experiment.id == result_create.experiment_id)
         .first()
     )
-    if not experiment:
-        raise HTTPException(status_code=400, detail="Invalid experiment")
-    res = Result(
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    # Parse result files if they exist
+    jobs_data = None
+    schedule_data = None
+    computed_metrics = None
+
+    if result_create.result_file_path and os.path.exists(
+        result_create.result_file_path
+    ):
+        try:
+            # Parse jobs CSV
+            jobs_file = os.path.join(result_create.result_file_path, "out_jobs.csv")
+            if os.path.exists(jobs_file):
+                with open(jobs_file, "r") as f:
+                    jobs_data = f.read()
+
+            # Parse schedule CSV
+            schedule_file = os.path.join(
+                result_create.result_file_path, "out_schedule.csv"
+            )
+            if os.path.exists(schedule_file):
+                with open(schedule_file, "r") as f:
+                    schedule_data = f.read()
+
+                # Compute additional metrics from schedule data
+                f.seek(0)
+                reader = csv.DictReader(f)
+                for row in reader:
+                    computed_metrics = {
+                        "batsim_version": row.get("batsim_version"),
+                        "consumed_joules": float(row.get("consumed_joules", 0)),
+                        "nb_jobs": int(row.get("nb_jobs", 0)),
+                        "nb_jobs_success": int(row.get("nb_jobs_success", 0)),
+                        "nb_jobs_killed": int(row.get("nb_jobs_killed", 0)),
+                        "nb_jobs_rejected": int(row.get("nb_jobs_rejected", 0)),
+                        "success_rate": float(row.get("success_rate", 0)),
+                        "scheduling_time": float(row.get("scheduling_time", 0)),
+                        "time_computing": float(row.get("time_computing", 0)),
+                        "time_idle": float(row.get("time_idle", 0)),
+                        "nb_computing_machines": int(
+                            row.get("nb_computing_machines", 0)
+                        ),
+                    }
+                    break
+        except Exception:
+            pass
+
+    # Create result record
+    result = Result(
         experiment_id=result_create.experiment_id,
         simulation_time=result_create.simulation_time,
         total_jobs=result_create.total_jobs,
@@ -219,16 +270,19 @@ def create_result(
         average_waiting_time=result_create.average_waiting_time,
         average_turnaround_time=result_create.average_turnaround_time,
         resource_utilization=result_create.resource_utilization,
-        config=str(result_create.config) if result_create.config else None,
-        metrics=str(result_create.metrics) if result_create.metrics else None,
+        config=json.dumps(result_create.config) if result_create.config else None,
+        metrics=json.dumps(result_create.metrics) if result_create.metrics else None,
         logs=result_create.logs,
         result_file_path=result_create.result_file_path,
         log_file_path=result_create.log_file_path,
+        jobs_data=jobs_data,
+        schedule_data=schedule_data,
+        computed_metrics=json.dumps(computed_metrics) if computed_metrics else None,
     )
-    db.add(res)
+    db.add(result)
     db.commit()
-    db.refresh(res)
-    return res
+    db.refresh(result)
+    return result
 
 
 @router.put("/{result_id}", response_model=ResultSchema)

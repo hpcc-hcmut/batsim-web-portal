@@ -34,6 +34,9 @@ class ExperimentInDB(ExperimentBase):
     completed_jobs: int = 0
     progress_percentage: int = 0
     config: Optional[str] = None
+    simulation_dir: Optional[str] = None
+    batsim_logs: Optional[str] = None
+    pybatsim_logs: Optional[str] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -49,8 +52,6 @@ class Experiment(ExperimentInDB):
 class ExperimentWithDetails(Experiment):
     scenario_name: Optional[str] = None
     strategy_name: Optional[str] = None
-    workload_name: Optional[str] = None
-    platform_name: Optional[str] = None
     creator_username: Optional[str] = None
 
 

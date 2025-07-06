@@ -14,6 +14,7 @@ from app.schemas.workload import (
     WorkloadWithCreator,
 )
 from app.api.auth import get_current_user
+import json
 
 router = APIRouter()
 
@@ -79,6 +80,21 @@ async def create_workload(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
+    # Parse metadata from file (if JSON)
+    nb_res = None
+    jobs = None
+    profiles = None
+    if file.content_type == "application/json" or file.filename.endswith(".json"):
+        try:
+            file.file.seek(0)
+            file_content = open(file_path, "r").read()
+            data = json.loads(file_content)
+            nb_res = data.get("nb_res")
+            jobs = data.get("jobs")
+            profiles = data.get("profiles")
+        except Exception:
+            pass
+
     # Create workload record
     workload = Workload(
         name=name,
@@ -87,6 +103,9 @@ async def create_workload(
         file_size=file.size,
         file_type=file.content_type,
         created_by=current_user.id,
+        nb_res=nb_res,
+        jobs=json.dumps(jobs) if jobs is not None else None,
+        profiles=json.dumps(profiles) if profiles is not None else None,
     )
     db.add(workload)
     db.commit()
@@ -157,3 +176,61 @@ def download_workload(
         "file_path": workload.file_path,
         "file_name": os.path.basename(workload.file_path),
     }
+
+
+@router.put("/{workload_id}/file", response_model=WorkloadSchema)
+async def update_workload_file(
+    workload_id: int,
+    name: str = Form(None),
+    description: str = Form(None),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    workload = db.query(Workload).filter(Workload.id == workload_id).first()
+    if workload is None:
+        raise HTTPException(status_code=404, detail="Workload not found")
+
+    # Check permissions (only creator or admin can update)
+    if workload.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    if name is not None:
+        workload.name = name
+    if description is not None:
+        workload.description = description
+
+    if file is not None:
+        ensure_storage_directory()
+        # Remove old file
+        if workload.file_path and os.path.exists(workload.file_path):
+            os.remove(workload.file_path)
+        # Save new file
+        file_path = os.path.join(
+            settings.STORAGE_PATH, "workloads", f"{workload.name}_{file.filename}"
+        )
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        workload.file_path = file_path
+        workload.file_size = file.size
+        workload.file_type = file.content_type
+        # Parse metadata from file (if JSON)
+        nb_res = None
+        jobs = None
+        profiles = None
+        if file.content_type == "application/json" or file.filename.endswith(".json"):
+            try:
+                file_content = open(file_path, "r").read()
+                data = json.loads(file_content)
+                nb_res = data.get("nb_res")
+                jobs = data.get("jobs")
+                profiles = data.get("profiles")
+            except Exception:
+                pass
+        workload.nb_res = nb_res
+        workload.jobs = json.dumps(jobs) if jobs is not None else None
+        workload.profiles = json.dumps(profiles) if profiles is not None else None
+
+    db.commit()
+    db.refresh(workload)
+    return workload

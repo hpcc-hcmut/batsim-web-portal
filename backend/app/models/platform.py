@@ -16,6 +16,9 @@ class Platform(Base):
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    nb_hosts = Column(Integer, nullable=True)
+    nb_clusters = Column(Integer, nullable=True)
+    platform_config = Column(Text, nullable=True)  # Store as XML string
 
     # Relationships
     creator = relationship("User", back_populates="platforms")

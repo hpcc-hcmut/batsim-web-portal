@@ -128,21 +128,6 @@ def seed_demo_data():
                 db.add(s)
             db.commit()
 
-        # --- Scenarios ---
-        workloads = db.query(Workload).all()
-        platforms = db.query(Platform).all()
-        if not db.query(Scenario).first() and workloads and platforms:
-            for i, (w, p) in enumerate(zip(workloads, platforms)):
-                sc = Scenario(
-                    name=f"Demo Scenario {i+1}",
-                    description=f"Scenario combining {w.name} and {p.name}.",
-                    workload_id=w.id,
-                    platform_id=p.id,
-                    created_by=demo_user.id,
-                )
-                db.add(sc)
-            db.commit()
-
         # --- Experiments ---
         scenarios = db.query(Scenario).all()
         strategies = db.query(Strategy).all()
@@ -156,6 +141,9 @@ def seed_demo_data():
                     status="completed" if i % 2 == 0 else "running",
                     batsim_container_id=f"batsim_{i+1}",
                     pybatsim_container_id=f"pybatsim_{i+1}",
+                    simulation_dir=f"/storage/experiments/exp_{i+1}",
+                    batsim_logs=f"Batsim started at {i+1}:00:00\nPlatform loaded: {sc.platform.name}\nWorkload loaded: {sc.workload.name}\nSimulation completed successfully.",
+                    pybatsim_logs=f"Pybatsim started at {i+1}:00:05\nStrategy loaded: {st.name}\nScheduler initialized\nAll jobs processed.",
                     total_jobs=100 + i * 10,
                     completed_jobs=100 + i * 10 if i % 2 == 0 else 50 + i * 10,
                     progress_percentage=100 if i % 2 == 0 else 50,

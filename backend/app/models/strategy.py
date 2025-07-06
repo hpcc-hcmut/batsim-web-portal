@@ -16,6 +16,10 @@ class Strategy(Base):
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    # Strategy metadata
+    nb_files = Column(Integer, nullable=True)
+    main_entry = Column(String, nullable=True)  # Main entry point file
+    strategy_files = Column(Text, nullable=True)  # Store as JSON string
 
     # Relationships
     creator = relationship("User", back_populates="strategies")

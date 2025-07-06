@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import os
 import shutil
+import xml.etree.ElementTree as ET
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User
@@ -75,6 +76,24 @@ async def create_platform(
     )
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    # Parse metadata from file (if XML)
+    nb_hosts = None
+    nb_clusters = None
+    platform_config = None
+    if file.content_type == "application/xml" or file.filename.endswith(".xml"):
+        try:
+            file_content = open(file_path, "r").read()
+            platform_config = file_content
+            root = ET.fromstring(file_content)
+            # Count hosts and clusters
+            hosts = root.findall(".//host")
+            clusters = root.findall(".//cluster")
+            nb_hosts = len(hosts)
+            nb_clusters = len(clusters)
+        except Exception:
+            pass
+
     # Create platform record
     platform = Platform(
         name=name,
@@ -83,6 +102,9 @@ async def create_platform(
         file_size=file.size,
         file_type=file.content_type,
         created_by=current_user.id,
+        nb_hosts=nb_hosts,
+        nb_clusters=nb_clusters,
+        platform_config=platform_config,
     )
     db.add(platform)
     db.commit()
@@ -105,6 +127,67 @@ def update_platform(
         raise HTTPException(status_code=403, detail="Not enough permissions")
     for field, value in platform_update.dict(exclude_unset=True).items():
         setattr(platform, field, value)
+    db.commit()
+    db.refresh(platform)
+    return platform
+
+
+@router.put("/{platform_id}/file", response_model=PlatformSchema)
+async def update_platform_file(
+    platform_id: int,
+    name: str = Form(None),
+    description: str = Form(None),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    platform = db.query(Platform).filter(Platform.id == platform_id).first()
+    if platform is None:
+        raise HTTPException(status_code=404, detail="Platform not found")
+
+    # Check permissions (only creator or admin can update)
+    if platform.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    if name is not None:
+        platform.name = name
+    if description is not None:
+        platform.description = description
+
+    if file is not None:
+        ensure_storage_directory()
+        # Remove old file
+        if platform.file_path and os.path.exists(platform.file_path):
+            os.remove(platform.file_path)
+        # Save new file
+        file_path = os.path.join(
+            settings.STORAGE_PATH, "platforms", f"{platform.name}_{file.filename}"
+        )
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        platform.file_path = file_path
+        platform.file_size = file.size
+        platform.file_type = file.content_type
+        # Parse metadata from file (if XML)
+        nb_hosts = None
+        nb_clusters = None
+        platform_config = None
+        if file.content_type == "application/xml" or file.filename.endswith(".xml"):
+            try:
+                file_content = open(file_path, "r").read()
+                platform_config = file_content
+                root = ET.fromstring(file_content)
+                # Count hosts and clusters
+                hosts = root.findall(".//host")
+                clusters = root.findall(".//cluster")
+                nb_hosts = len(hosts)
+                nb_clusters = len(clusters)
+            except Exception:
+                pass
+        platform.nb_hosts = nb_hosts
+        platform.nb_clusters = nb_clusters
+        platform.platform_config = platform_config
+
     db.commit()
     db.refresh(platform)
     return platform

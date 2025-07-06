@@ -3,6 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import os
 import shutil
+import json
+import ast
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User
@@ -75,6 +77,51 @@ async def create_strategy(
     )
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
+
+    # Parse metadata from Python file
+    nb_files = 1
+    main_entry = None
+    strategy_files = None
+
+    if file.content_type == "text/x-python" or file.filename.endswith(".py"):
+        try:
+            # Read the file content
+            with open(file_path, "r") as f:
+                file_content = f.read()
+
+            # Parse Python AST to find main function
+            tree = ast.parse(file_content)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef) and node.name == "main":
+                    main_entry = file.filename
+                    break
+
+            # If no main function found, check for if __name__ == "__main__" block
+            if not main_entry:
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.If):
+                        if (
+                            isinstance(node.test, ast.Compare)
+                            and isinstance(node.test.left, ast.Name)
+                            and node.test.left.id == "__name__"
+                        ):
+                            main_entry = file.filename
+                            break
+
+            # Store file information
+            strategy_files = json.dumps(
+                [
+                    {
+                        "filename": file.filename,
+                        "size": file.size,
+                        "is_main": main_entry == file.filename,
+                    }
+                ]
+            )
+
+        except Exception:
+            pass
+
     # Create strategy record
     strategy = Strategy(
         name=name,
@@ -83,6 +130,9 @@ async def create_strategy(
         file_size=file.size,
         file_type=file.content_type or "python",
         created_by=current_user.id,
+        nb_files=nb_files,
+        main_entry=main_entry,
+        strategy_files=strategy_files,
     )
     db.add(strategy)
     db.commit()
@@ -105,6 +155,96 @@ def update_strategy(
         raise HTTPException(status_code=403, detail="Not enough permissions")
     for field, value in strategy_update.dict(exclude_unset=True).items():
         setattr(strategy, field, value)
+    db.commit()
+    db.refresh(strategy)
+    return strategy
+
+
+@router.put("/{strategy_id}/file", response_model=StrategySchema)
+async def update_strategy_file(
+    strategy_id: int,
+    name: str = Form(None),
+    description: str = Form(None),
+    file: UploadFile = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+
+    # Check permissions (only creator or admin can update)
+    if strategy.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    if name is not None:
+        strategy.name = name
+    if description is not None:
+        strategy.description = description
+
+    if file is not None:
+        ensure_storage_directory()
+        # Remove old file
+        if strategy.file_path and os.path.exists(strategy.file_path):
+            os.remove(strategy.file_path)
+        # Save new file
+        file_path = os.path.join(
+            settings.STORAGE_PATH, "strategies", f"{strategy.name}_{file.filename}"
+        )
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        strategy.file_path = file_path
+        strategy.file_size = file.size
+        strategy.file_type = file.content_type
+
+        # Parse metadata from Python file
+        nb_files = 1
+        main_entry = None
+        strategy_files = None
+
+        if file.content_type == "text/x-python" or file.filename.endswith(".py"):
+            try:
+                # Read the file content
+                with open(file_path, "r") as f:
+                    file_content = f.read()
+
+                # Parse Python AST to find main function
+                tree = ast.parse(file_content)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.FunctionDef) and node.name == "main":
+                        main_entry = file.filename
+                        break
+
+                # If no main function found, check for if __name__ == "__main__" block
+                if not main_entry:
+                    for node in ast.walk(tree):
+                        if isinstance(node, ast.If):
+                            if (
+                                isinstance(node.test, ast.Compare)
+                                and isinstance(node.test.left, ast.Name)
+                                and node.test.left.id == "__name__"
+                            ):
+                                main_entry = file.filename
+                                break
+
+                # Store file information
+                strategy_files = json.dumps(
+                    [
+                        {
+                            "filename": file.filename,
+                            "size": file.size,
+                            "is_main": main_entry == file.filename,
+                        }
+                    ]
+                )
+
+            except Exception:
+                pass
+
+        strategy.nb_files = nb_files
+        strategy.main_entry = main_entry
+        strategy.strategy_files = strategy_files
+
     db.commit()
     db.refresh(strategy)
     return strategy

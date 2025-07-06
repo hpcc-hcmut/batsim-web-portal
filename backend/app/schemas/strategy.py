@@ -25,6 +25,9 @@ class StrategyInDB(StrategyBase):
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    nb_files: Optional[int] = None
+    main_entry: Optional[str] = None
+    strategy_files: Optional[str] = None
 
     class Config:
         from_attributes = True

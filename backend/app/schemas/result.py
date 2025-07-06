@@ -55,6 +55,9 @@ class ResultInDB(ResultBase):
     result_file_path: Optional[str] = None
     log_file_path: Optional[str] = None
     created_at: datetime
+    jobs_data: Optional[str] = None
+    schedule_data: Optional[str] = None
+    computed_metrics: Optional[str] = None
 
     class Config:
         from_attributes = True

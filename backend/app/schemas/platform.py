@@ -25,6 +25,9 @@ class PlatformInDB(PlatformBase):
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    nb_hosts: Optional[int] = None
+    nb_clusters: Optional[int] = None
+    platform_config: Optional[str] = None
 
     class Config:
         from_attributes = True

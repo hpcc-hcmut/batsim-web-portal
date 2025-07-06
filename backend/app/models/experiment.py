@@ -40,6 +40,10 @@ class Experiment(Base):
 
     # Configuration
     config = Column(Text)  # JSON string of experiment configuration
+    # Execution details
+    simulation_dir = Column(String)  # Directory where simulation files are stored
+    batsim_logs = Column(Text)  # Batsim execution logs
+    pybatsim_logs = Column(Text)  # Pybatsim execution logs
 
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

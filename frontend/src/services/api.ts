@@ -24,6 +24,9 @@ export interface Workload {
   created_at: string;
   updated_at?: string;
   creator_username?: string;
+  nb_res?: number;
+  jobs?: string; // JSON string
+  profiles?: string; // JSON string
 }
 
 export interface Platform {
@@ -37,6 +40,9 @@ export interface Platform {
   created_at: string;
   updated_at?: string;
   creator_username?: string;
+  nb_hosts?: number;
+  nb_clusters?: number;
+  platform_config?: string; // XML string
 }
 
 export interface Scenario {
@@ -64,6 +70,9 @@ export interface Strategy {
   created_at: string;
   updated_at?: string;
   creator_username?: string;
+  nb_files?: number;
+  main_entry?: string;
+  strategy_files?: string; // JSON string
 }
 
 export interface Experiment {
@@ -88,13 +97,14 @@ export interface Experiment {
   completed_jobs: number;
   progress_percentage: number;
   config?: string;
+  simulation_dir?: string;
+  batsim_logs?: string;
+  pybatsim_logs?: string;
   created_by?: number;
   created_at: string;
   updated_at?: string;
   scenario_name?: string;
   strategy_name?: string;
-  workload_name?: string;
-  platform_name?: string;
   creator_username?: string;
 }
 
@@ -118,6 +128,9 @@ export interface Result {
   experiment_name?: string;
   scenario_name?: string;
   strategy_name?: string;
+  jobs_data?: string; // CSV string
+  schedule_data?: string; // CSV string
+  computed_metrics?: string; // JSON string
 }
 
 export interface LoginCredentials {
@@ -224,6 +237,13 @@ export const platformsAPI = {
     id: number,
     data: Partial<Platform>
   ): Promise<AxiosResponse<Platform>> => api.put(`/platforms/${id}`, data),
+  updateFile: (
+    id: number,
+    formData: FormData
+  ): Promise<AxiosResponse<Platform>> =>
+    api.put(`/platforms/${id}/file`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   delete: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.delete(`/platforms/${id}`),
   download: (
@@ -267,6 +287,13 @@ export const strategiesAPI = {
     id: number,
     data: Partial<Strategy>
   ): Promise<AxiosResponse<Strategy>> => api.put(`/strategies/${id}`, data),
+  updateFile: (
+    id: number,
+    formData: FormData
+  ): Promise<AxiosResponse<Strategy>> =>
+    api.put(`/strategies/${id}/file`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
   delete: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.delete(`/strategies/${id}`),
   download: (
@@ -284,9 +311,13 @@ export const experimentsAPI = {
     api.get("/experiments", { params }),
   getById: (id: number): Promise<AxiosResponse<Experiment>> =>
     api.get(`/experiments/${id}`),
-  create: (
-    data: Omit<Experiment, "id" | "created_at" | "updated_at">
-  ): Promise<AxiosResponse<Experiment>> => api.post("/experiments", data),
+  create: (data: {
+    name: string;
+    description?: string;
+    scenario_id: number;
+    strategy_id: number;
+    config?: any;
+  }): Promise<AxiosResponse<Experiment>> => api.post("/experiments", data),
   update: (
     id: number,
     data: Partial<Experiment>
@@ -297,12 +328,18 @@ export const experimentsAPI = {
     api.post(`/experiments/${id}/start`),
   stop: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.post(`/experiments/${id}/stop`),
-  pause: (id: number): Promise<AxiosResponse<{ message: string }>> =>
-    api.post(`/experiments/${id}/pause`),
   getStatus: (
     id: number
-  ): Promise<AxiosResponse<{ status: string; progress: number }>> =>
-    api.get(`/experiments/${id}/status`),
+  ): Promise<
+    AxiosResponse<{
+      status: string;
+      progress_percentage: number;
+      completed_jobs: number;
+      total_jobs: number;
+      start_time: string;
+      end_time: string;
+    }>
+  > => api.get(`/experiments/${id}/status`),
 };
 
 // Results API
@@ -319,6 +356,8 @@ export const resultsAPI = {
     start_date?: string;
     end_date?: string;
   }): Promise<AxiosResponse<any>> => api.get("/results/analytics", { params }),
+  delete: (id: number): Promise<AxiosResponse<{ message: string }>> =>
+    api.delete(`/results/${id}`),
 };
 
 // System API

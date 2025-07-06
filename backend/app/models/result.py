@@ -33,5 +33,12 @@ class Result(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    # Parsed result data
+    jobs_data = Column(Text, nullable=True)  # Store as CSV string
+    schedule_data = Column(Text, nullable=True)  # Store as CSV string
+    computed_metrics = Column(
+        Text, nullable=True
+    )  # Store as JSON string with computed metrics
+
     # Relationships
     experiment = relationship("Experiment", back_populates="results")
