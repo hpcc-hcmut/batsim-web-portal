@@ -1,6 +1,18 @@
 # BatSim Web Portal
 
+![BatSim Web Portal Screenshot](docs/screenshot.png)
+
 A modern web portal for managing BatSim simulations with React + TypeScript frontend and FastAPI backend.
+
+## Table of Contents
+
+- [Features](#features)
+- [Project Structure](#project-structure)
+- [Implementation Status](#implementation-status)
+- [Quick Start](#quick-start)
+- [API Documentation](#api-documentation)
+- [Technologies Used](#technologies-used)
+- [Development](#development)
 
 ## Features
 
