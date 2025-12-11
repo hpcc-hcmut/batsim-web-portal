@@ -8,6 +8,10 @@ class ScenarioBase(BaseModel):
     description: Optional[str] = None
     workload_id: int
     platform_id: int
+    # Prediction configuration
+    prediction_enabled: Optional[bool] = False
+    prediction_model_id: Optional[int] = None
+    prediction_mode: Optional[str] = "no_prediction"  # no_prediction, prediction_only, hybrid
 
 
 class ScenarioCreate(ScenarioBase):
@@ -19,6 +23,9 @@ class ScenarioUpdate(BaseModel):
     description: Optional[str] = None
     workload_id: Optional[int] = None
     platform_id: Optional[int] = None
+    prediction_enabled: Optional[bool] = None
+    prediction_model_id: Optional[int] = None
+    prediction_mode: Optional[str] = None
 
 
 class ScenarioInDB(ScenarioBase):

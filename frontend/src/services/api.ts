@@ -3,14 +3,45 @@ import axios, { AxiosResponse } from "axios";
 const API_BASE_URL = "http://localhost:8000/api";
 
 // Types
+export type UserRole = "admin" | "pi" | "researcher" | "student";
+
 export interface User {
   id: number;
   username: string;
   email: string;
-  role: "admin" | "user";
+  role: UserRole;
   is_active: string;
   created_at: string;
   updated_at?: string;
+}
+
+export type ProjectRole = "owner" | "member" | "viewer";
+
+export interface ProjectMember {
+  id: number;
+  project_id: number;
+  user_id: number;
+  role: ProjectRole;
+  created_at: string;
+  username?: string;
+  email?: string;
+}
+
+export interface Project {
+  id: number;
+  name: string;
+  description?: string;
+  owner_id: number;
+  created_at: string;
+  updated_at?: string;
+  owner_username?: string;
+  member_count?: number;
+  workload_count?: number;
+  platform_count?: number;
+  scenario_count?: number;
+  strategy_count?: number;
+  experiment_count?: number;
+  members?: ProjectMember[];
 }
 
 export interface Workload {
@@ -27,6 +58,12 @@ export interface Workload {
   nb_res?: number;
   jobs?: string; // JSON string
   profiles?: string; // JSON string
+  // Versioning (FR3)
+  version?: number;
+  parent_id?: number;
+  tags?: string; // JSON array of strings
+  // Project association (FR2)
+  project_id?: number;
 }
 
 export interface Platform {
@@ -43,6 +80,12 @@ export interface Platform {
   nb_hosts?: number;
   nb_clusters?: number;
   platform_config?: string; // XML string
+  // Versioning (FR3)
+  version?: number;
+  parent_id?: number;
+  topology_type?: string;
+  // Project association (FR2)
+  project_id?: number;
 }
 
 export interface Scenario {
@@ -57,7 +100,68 @@ export interface Scenario {
   workload_name?: string;
   platform_name?: string;
   creator_username?: string;
+  // Scenario config (FR4)
+  config?: string; // JSON string for scenario-specific parameters
+  // Versioning (FR3)
+  parent_scenario_id?: number;
+  // Project association (FR2)
+  project_id?: number;
+  // Prediction configuration (Phase 7)
+  prediction_enabled?: boolean;
+  prediction_model_id?: number;
+  prediction_mode?: PredictionMode;
 }
+
+// Prediction types (Phase 7)
+export type PredictionMode = "no_prediction" | "prediction_only" | "hybrid";
+export type ModelType = "xgboost" | "random_forest" | "linear" | "mock";
+
+export interface PredictionModel {
+  id: number;
+  name: string;
+  description?: string;
+  model_path: string;
+  model_type: ModelType;
+  is_active: boolean;
+  accuracy?: number;
+  mae?: number;
+  features?: string;
+  created_at: string;
+  updated_at?: string;
+  created_by?: number;
+}
+
+export interface JobPredictionSample {
+  job_id: string;
+  original_walltime: number;
+  predicted_duration: number;
+  confidence: number;
+  mode: string;
+}
+
+export interface PredictionPreviewResponse {
+  total_jobs: number;
+  sample_size: number;
+  mode: string;
+  model_id?: number;
+  samples: JobPredictionSample[];
+}
+
+export interface PredictionStats {
+  total_models: number;
+  active_models: number;
+  available_modes: string[];
+}
+
+export type StrategyType =
+  | "fcfs"
+  | "backfilling"
+  | "easy_backfill"
+  | "priority"
+  | "fair_share"
+  | "energy_aware"
+  | "rl_based"
+  | "custom";
 
 export interface Strategy {
   id: number;
@@ -73,7 +177,25 @@ export interface Strategy {
   nb_files?: number;
   main_entry?: string;
   strategy_files?: string; // JSON string
+  // Strategy classification (FR6)
+  strategy_type?: StrategyType;
+  // Versioning (FR3)
+  version?: number;
+  parent_id?: number;
+  is_baseline?: boolean;
+  // Project association (FR2)
+  project_id?: number;
 }
+
+export type ExperimentStatus =
+  | "created"
+  | "queued"
+  | "pending"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
 export interface Experiment {
   id: number;
@@ -81,13 +203,7 @@ export interface Experiment {
   description?: string;
   scenario_id: number;
   strategy_id: number;
-  status:
-    | "pending"
-    | "running"
-    | "paused"
-    | "completed"
-    | "failed"
-    | "cancelled";
+  status: ExperimentStatus;
   batsim_container_id?: string;
   pybatsim_container_id?: string;
   start_time?: string;
@@ -106,6 +222,8 @@ export interface Experiment {
   scenario_name?: string;
   strategy_name?: string;
   creator_username?: string;
+  // Project association (FR2)
+  project_id?: number;
 }
 
 export interface Result {
@@ -142,7 +260,7 @@ export interface RegisterData {
   username: string;
   email: string;
   password: string;
-  role?: "admin" | "user";
+  role?: UserRole;
 }
 
 export interface TokenResponse {
@@ -195,6 +313,36 @@ export const authAPI = {
   register: (userData: RegisterData): Promise<AxiosResponse<User>> =>
     api.post("/auth/register", userData),
   getMe: (): Promise<AxiosResponse<User>> => api.get("/auth/me"),
+};
+
+// Projects API (FR2)
+export const projectsAPI = {
+  getAll: (params?: {
+    skip?: number;
+    limit?: number;
+  }): Promise<AxiosResponse<Project[]>> => api.get("/projects", { params }),
+  getById: (id: number): Promise<AxiosResponse<Project>> =>
+    api.get(`/projects/${id}`),
+  create: (data: {
+    name: string;
+    description?: string;
+  }): Promise<AxiosResponse<Project>> => api.post("/projects", data),
+  update: (
+    id: number,
+    data: { name?: string; description?: string }
+  ): Promise<AxiosResponse<Project>> => api.put(`/projects/${id}`, data),
+  delete: (id: number): Promise<AxiosResponse<void>> =>
+    api.delete(`/projects/${id}`),
+  // Member management
+  getMembers: (projectId: number): Promise<AxiosResponse<ProjectMember[]>> =>
+    api.get(`/projects/${projectId}/members`),
+  addMember: (
+    projectId: number,
+    data: { user_id: number; role: ProjectRole }
+  ): Promise<AxiosResponse<ProjectMember>> =>
+    api.post(`/projects/${projectId}/members`, data),
+  removeMember: (projectId: number, userId: number): Promise<AxiosResponse<void>> =>
+    api.delete(`/projects/${projectId}/members/${userId}`),
 };
 
 // Workloads API
@@ -358,6 +506,12 @@ export const resultsAPI = {
   }): Promise<AxiosResponse<any>> => api.get("/results/analytics", { params }),
   delete: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.delete(`/results/${id}`),
+  exportCSV: (params?: { start_date?: string; end_date?: string }): Promise<AxiosResponse<Blob>> =>
+    api.get("/results/export/csv", { params, responseType: "blob" }),
+  exportJSON: (params?: { start_date?: string; end_date?: string }): Promise<AxiosResponse<Blob>> =>
+    api.get("/results/export/json", { params, responseType: "blob" }),
+  exportResultCSV: (id: number): Promise<AxiosResponse<Blob>> =>
+    api.get(`/results/${id}/export/csv`, { responseType: "blob" }),
 };
 
 // System API
@@ -367,6 +521,186 @@ export const systemAPI = {
   getResources: (): Promise<
     AxiosResponse<{ cpu: number; memory: number; disk: number }>
   > => api.get("/system/resources"),
+};
+
+
+
+// Grafana API
+export interface GrafanaStatus {
+  available: boolean;
+  url: string;
+  embed_enabled: boolean;
+}
+
+export interface GrafanaDashboard {
+  uid: string;
+  title: string;
+  url: string;
+  embed_url: string;
+}
+
+export interface GrafanaPredefinedDashboard {
+  uid: string;
+  title: string;
+  description: string;
+  embed_url: string;
+  panels: Array<{ id: number; title: string }>;
+}
+
+export const grafanaAPI = {
+  getStatus: (): Promise<AxiosResponse<GrafanaStatus>> =>
+    api.get("/grafana/status"),
+  getDashboards: (): Promise<AxiosResponse<{ dashboards: any[] }>> =>
+    api.get("/grafana/dashboards"),
+  getDashboard: (uid: string): Promise<AxiosResponse<any>> =>
+    api.get(`/grafana/dashboards/${uid}`),
+  createDashboard: (data: {
+    experiment_id: number;
+    experiment_name: string;
+    container_name?: string;
+  }): Promise<AxiosResponse<GrafanaDashboard>> =>
+    api.post("/grafana/dashboards", data),
+  deleteDashboard: (uid: string): Promise<AxiosResponse<{ status: string; uid: string }>> =>
+    api.delete(`/grafana/dashboards/${uid}`),
+  getEmbedUrl: (
+    uid: string,
+    panelId?: number
+  ): Promise<AxiosResponse<{ uid: string; embed_url: string; full_url: string }>> =>
+    api.get(`/grafana/embed-url/${uid}`, { params: panelId ? { panel_id: panelId } : {} }),
+  getPredefinedDashboards: (): Promise<
+    AxiosResponse<{ dashboards: GrafanaPredefinedDashboard[] }>
+  > => api.get("/grafana/predefined-dashboards"),
+};
+
+// Predictions API (Phase 7)
+export const predictionsAPI = {
+  getModels: (activeOnly?: boolean): Promise<AxiosResponse<PredictionModel[]>> =>
+    api.get("/predictions/models", { params: { active_only: activeOnly ?? true } }),
+  getModel: (id: number): Promise<AxiosResponse<PredictionModel>> =>
+    api.get(`/predictions/models/${id}`),
+  createModel: (data: {
+    name: string;
+    description?: string;
+    model_path: string;
+    model_type?: string;
+    features?: string;
+  }): Promise<AxiosResponse<PredictionModel>> =>
+    api.post("/predictions/models", data),
+  updateModel: (
+    id: number,
+    data: { name?: string; description?: string; is_active?: boolean }
+  ): Promise<AxiosResponse<PredictionModel>> =>
+    api.put(`/predictions/models/${id}`, data),
+  deleteModel: (id: number): Promise<AxiosResponse<void>> =>
+    api.delete(`/predictions/models/${id}`),
+  preview: (data: {
+    workload_id: number;
+    model_id?: number;
+    mode: string;
+    sample_size?: number;
+  }): Promise<AxiosResponse<PredictionPreviewResponse>> =>
+    api.post("/predictions/preview", data),
+  getStats: (): Promise<AxiosResponse<PredictionStats>> =>
+    api.get("/predictions/stats"),
+  uploadModelFile: (modelId: number, file: File): Promise<AxiosResponse<{ message: string; path: string }>> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post(`/predictions/models/${modelId}/upload`, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+  },
+};
+
+// --- Audit Logging Types (Phase 8) ---
+export interface AuditLog {
+  id: number;
+  user_id: number;
+  action: string;
+  entity_type: string;
+  entity_id: number;
+  entity_name?: string;
+  project_id?: number;
+  changes?: Record<string, { old: unknown; new: unknown }>;
+  created_at: string;
+  username?: string;
+  ip_address?: string;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLog[];
+  total: number;
+  next_cursor?: string;
+}
+
+// --- Comment Types (Phase 8) ---
+export interface Comment {
+  id: number;
+  content: string;
+  entity_type: string;
+  entity_id: number;
+  parent_id?: number;
+  thread_level: number;
+  user_id: number;
+  username?: string;
+  is_deleted: boolean;
+  created_at: string;
+  updated_at?: string;
+  reply_count: number;
+  replies?: Comment[];
+}
+
+// Audit API (Phase 8)
+export const auditAPI = {
+  getLogs: (params?: {
+    entity_type?: string;
+    entity_id?: number;
+    user_id?: number;
+    project_id?: number;
+    limit?: number;
+    cursor?: string;
+  }): Promise<AxiosResponse<AuditLogListResponse>> =>
+    api.get("/audit", { params }),
+
+  getEntityHistory: (
+    entityType: string,
+    entityId: number,
+    limit?: number
+  ): Promise<AxiosResponse<AuditLog[]>> =>
+    api.get(`/audit/entity/${entityType}/${entityId}`, { params: { limit } }),
+};
+
+// Comments API (Phase 8)
+export const commentsAPI = {
+  getComments: (
+    entityType: string,
+    entityId: number,
+    includeDeleted?: boolean
+  ): Promise<AxiosResponse<Comment[]>> =>
+    api.get("/comments", {
+      params: { entity_type: entityType, entity_id: entityId, include_deleted: includeDeleted },
+    }),
+
+  getThreaded: (
+    entityType: string,
+    entityId: number
+  ): Promise<AxiosResponse<Comment[]>> =>
+    api.get("/comments/threaded", {
+      params: { entity_type: entityType, entity_id: entityId },
+    }),
+
+  create: (data: {
+    entity_type: string;
+    entity_id: number;
+    content: string;
+    parent_id?: number;
+  }): Promise<AxiosResponse<Comment>> =>
+    api.post("/comments", data),
+
+  update: (id: number, content: string): Promise<AxiosResponse<Comment>> =>
+    api.put(`/comments/${id}`, { content }),
+
+  delete: (id: number): Promise<AxiosResponse<void>> =>
+    api.delete(`/comments/${id}`),
 };
 
 export default api;

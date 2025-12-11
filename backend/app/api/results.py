@@ -1,11 +1,13 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 import csv
 import json
 import os
+import io
 from app.core.database import get_db
 from app.models.user import User
 from app.models.result import Result
@@ -314,3 +316,166 @@ def delete_result(
     db.delete(res)
     db.commit()
     return {"message": "Result deleted successfully"}
+
+
+@router.get("/export/csv")
+def export_results_csv(
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export results as CSV file"""
+    query = db.query(Result).options(
+        joinedload(Result.experiment).joinedload(Experiment.scenario),
+        joinedload(Result.experiment).joinedload(Experiment.strategy),
+    )
+
+    # Apply date filters
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(Result.created_at >= start_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start_date format")
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(Result.created_at < end_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end_date format")
+
+    results = query.all()
+
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow([
+        "id", "experiment_id", "experiment_name", "scenario_name", "strategy_name",
+        "simulation_time", "total_jobs", "completed_jobs", "failed_jobs",
+        "makespan", "avg_waiting_time", "avg_turnaround_time", "resource_utilization",
+        "created_at"
+    ])
+
+    # Write data rows
+    for res in results:
+        experiment_name = res.experiment.name if res.experiment else ""
+        scenario_name = res.experiment.scenario.name if res.experiment and res.experiment.scenario else ""
+        strategy_name = res.experiment.strategy.name if res.experiment and res.experiment.strategy else ""
+
+        writer.writerow([
+            res.id,
+            res.experiment_id,
+            experiment_name,
+            scenario_name,
+            strategy_name,
+            res.simulation_time,
+            res.total_jobs,
+            res.completed_jobs,
+            res.failed_jobs,
+            res.makespan,
+            res.average_waiting_time,
+            res.average_turnaround_time,
+            res.resource_utilization,
+            res.created_at.isoformat() if res.created_at else ""
+        ])
+
+    output.seek(0)
+    filename = f"results_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/export/json")
+def export_results_json(
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export results as JSON file"""
+    query = db.query(Result).options(
+        joinedload(Result.experiment).joinedload(Experiment.scenario),
+        joinedload(Result.experiment).joinedload(Experiment.strategy),
+    )
+
+    # Apply date filters
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            query = query.filter(Result.created_at >= start_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid start_date format")
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(Result.created_at < end_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid end_date format")
+
+    results = query.all()
+
+    # Build JSON data
+    data = []
+    for res in results:
+        experiment_name = res.experiment.name if res.experiment else None
+        scenario_name = res.experiment.scenario.name if res.experiment and res.experiment.scenario else None
+        strategy_name = res.experiment.strategy.name if res.experiment and res.experiment.strategy else None
+
+        data.append({
+            "id": res.id,
+            "experiment_id": res.experiment_id,
+            "experiment_name": experiment_name,
+            "scenario_name": scenario_name,
+            "strategy_name": strategy_name,
+            "simulation_time": res.simulation_time,
+            "total_jobs": res.total_jobs,
+            "completed_jobs": res.completed_jobs,
+            "failed_jobs": res.failed_jobs,
+            "makespan": res.makespan,
+            "avg_waiting_time": res.average_waiting_time,
+            "avg_turnaround_time": res.average_turnaround_time,
+            "resource_utilization": res.resource_utilization,
+            "created_at": res.created_at.isoformat() if res.created_at else None,
+            "computed_metrics": json.loads(res.computed_metrics) if res.computed_metrics else None
+        })
+
+    json_output = json.dumps({"results": data, "total": len(data)}, indent=2)
+    filename = f"results_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+
+    return StreamingResponse(
+        iter([json_output]),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+@router.get("/{result_id}/export/csv")
+def export_single_result_csv(
+    result_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export a single result's jobs data as CSV"""
+    res = db.query(Result).filter(Result.id == result_id).first()
+    if res is None:
+        raise HTTPException(status_code=404, detail="Result not found")
+
+    if not res.jobs_data:
+        raise HTTPException(status_code=404, detail="No jobs data available for this result")
+
+    filename = f"result_{result_id}_jobs.csv"
+
+    return StreamingResponse(
+        iter([res.jobs_data]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

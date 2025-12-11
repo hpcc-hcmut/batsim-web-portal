@@ -20,6 +20,16 @@ class Workload(Base):
     jobs = Column(Text, nullable=True)  # Store as JSON string
     profiles = Column(Text, nullable=True)  # Store as JSON string
 
+    # Versioning support (FR3)
+    version = Column(Integer, default=1)
+    parent_id = Column(Integer, ForeignKey("workloads.id"), nullable=True)
+    tags = Column(Text, nullable=True)  # JSON array of strings
+
+    # Project association (FR2)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+
     # Relationships
     creator = relationship("User", back_populates="workloads")
     scenarios = relationship("Scenario", back_populates="workload")
+    parent = relationship("Workload", remote_side=[id], backref="versions")
+    project = relationship("Project", back_populates="workloads")

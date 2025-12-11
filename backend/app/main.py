@@ -1,18 +1,82 @@
+import logging
+import signal
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
 from sqlalchemy.orm import Session
 from app.core.security import get_password_hash
 from app.models.user import UserRole
+from app.services.docker_service import docker_service
+from app.services.simulation_service import simulation_service
+
+logger = logging.getLogger(__name__)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager for startup and shutdown events."""
+    # Startup
+    logger.info("Starting BatSim Web Portal API...")
+
+    # Check Docker availability
+    if docker_service.is_available():
+        logger.info("Docker daemon is available")
+        # Clean up orphaned containers from previous runs
+        try:
+            await docker_service.cleanup_orphans()
+            logger.info("Orphaned containers cleaned up")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup orphans: {e}")
+    else:
+        logger.warning("Docker daemon not available - simulation features disabled")
+
+    # Register signal handlers for graceful shutdown
+    def signal_handler(signum, frame):
+        logger.info(f"Received signal {signum}, initiating shutdown...")
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down BatSim Web Portal API...")
+
+    # Stop all running simulations gracefully
+    running_experiments = simulation_service.get_running_experiments()
+    if running_experiments:
+        logger.info(f"Stopping {len(running_experiments)} running experiments...")
+        for exp_id in running_experiments:
+            try:
+                await simulation_service.stop_simulation(exp_id)
+                logger.info(f"Stopped experiment {exp_id}")
+            except Exception as e:
+                logger.warning(f"Failed to stop experiment {exp_id}: {e}")
+
+    # Final cleanup
+    try:
+        await docker_service.cleanup_all()
+        logger.info("All Docker resources cleaned up")
+    except Exception as e:
+        logger.warning(f"Failed to cleanup Docker resources: {e}")
+
+    logger.info("Shutdown complete")
+
 
 app = FastAPI(
     title="BatSim Web Portal API",
     description="A modern web portal for managing BatSim simulations",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -25,11 +89,15 @@ app.add_middleware(
 )
 
 # Import models to register them with SQLAlchemy
-from app.models import User, Workload, Platform, Scenario, Strategy, Experiment, Result
+from app.models import (
+    User, Workload, Platform, Scenario, Strategy, Experiment, Result,
+    Project, ProjectMember
+)
 
 # Import and include routers
 from app.api import (
     auth,
+    projects,
     workloads,
     platforms,
     scenarios,
@@ -37,9 +105,15 @@ from app.api import (
     experiments,
     results,
     system,
+    websocket,
+    grafana,
+    predictions,
+    audit,
+    comments,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(projects.router, prefix="/api/projects", tags=["Projects"])
 app.include_router(workloads.router, prefix="/api/workloads", tags=["Workloads"])
 app.include_router(platforms.router, prefix="/api/platforms", tags=["Platforms"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["Scenarios"])
@@ -47,6 +121,11 @@ app.include_router(strategies.router, prefix="/api/strategies", tags=["Strategie
 app.include_router(experiments.router, prefix="/api/experiments", tags=["Experiments"])
 app.include_router(results.router, prefix="/api/results", tags=["Results"])
 app.include_router(system.router, prefix="/api/system", tags=["System"])
+app.include_router(websocket.router, prefix="/api", tags=["WebSocket"])
+app.include_router(grafana.router, prefix="/api", tags=["Grafana"])
+app.include_router(predictions.router, prefix="/api", tags=["Predictions"])
+app.include_router(audit.router, prefix="/api/audit", tags=["Audit"])
+app.include_router(comments.router, prefix="/api/comments", tags=["Comments"])
 
 
 def seed_admin_user():

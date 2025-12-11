@@ -25,10 +25,13 @@ import {
   Settings,
   Code,
   Science,
+  PlayCircle,
   Assessment,
   Analytics,
   AccountCircle,
   Logout,
+  FolderSpecial,
+  Monitor,
 } from "@mui/icons-material";
 import useAuthStore from "../store/authStore";
 
@@ -42,13 +45,16 @@ interface MenuItem {
 
 const menuItems: MenuItem[] = [
   { text: "Dashboard", icon: <Dashboard />, path: "/" },
+  { text: "Projects", icon: <FolderSpecial />, path: "/projects" },
   { text: "Workloads", icon: <Storage />, path: "/workloads" },
   { text: "Platforms", icon: <Computer />, path: "/platforms" },
   { text: "Scenarios", icon: <Settings />, path: "/scenarios" },
   { text: "Strategies", icon: <Code />, path: "/strategies" },
   { text: "Experiments", icon: <Science />, path: "/experiments" },
+  { text: "Simulation", icon: <PlayCircle />, path: "/simulation" },
   { text: "Results", icon: <Assessment />, path: "/results" },
   { text: "Analytics", icon: <Analytics />, path: "/analytics" },
+  { text: "Monitoring", icon: <Monitor />, path: "/monitoring" },
 ];
 
 const Layout: React.FC = () => {

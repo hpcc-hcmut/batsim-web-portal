@@ -20,6 +20,16 @@ class Platform(Base):
     nb_clusters = Column(Integer, nullable=True)
     platform_config = Column(Text, nullable=True)  # Store as XML string
 
+    # Versioning support (FR4)
+    version = Column(Integer, default=1)
+    parent_id = Column(Integer, ForeignKey("platforms.id"), nullable=True)
+    topology_type = Column(String, nullable=True)  # e.g., "tree", "flat", "torus"
+
+    # Project association (FR2)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+
     # Relationships
     creator = relationship("User", back_populates="platforms")
     scenarios = relationship("Scenario", back_populates="platform")
+    parent = relationship("Platform", remote_side=[id], backref="versions")
+    project = relationship("Project", back_populates="platforms")

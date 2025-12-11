@@ -7,7 +7,9 @@ import enum
 
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
-    USER = "user"
+    PI = "pi"                   # Principal Investigator / Lab Leader
+    RESEARCHER = "researcher"
+    STUDENT = "student"
 
 
 class User(Base):
@@ -17,7 +19,7 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.USER)
+    role = Column(Enum(UserRole), default=UserRole.STUDENT)
     is_active = Column(String, default="true")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -28,3 +30,5 @@ class User(Base):
     scenarios = relationship("Scenario", back_populates="creator")
     strategies = relationship("Strategy", back_populates="creator")
     experiments = relationship("Experiment", back_populates="creator")
+    owned_projects = relationship("Project", back_populates="owner")
+    project_memberships = relationship("ProjectMember", back_populates="user")

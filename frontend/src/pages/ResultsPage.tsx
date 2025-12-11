@@ -184,7 +184,7 @@ const ResultsPage: React.FC = () => {
             {results.map((r) => {
               const computedMetrics = getComputedMetrics(r);
               return (
-                <Grid item xs={12} sm={6} md={4} key={r.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={r.id}>
                   <Card
                     sx={{
                       borderRadius: 1,

@@ -20,6 +20,12 @@ import StrategiesPage from "./pages/StrategiesPage";
 import ExperimentsPage from "./pages/ExperimentsPage";
 import ResultsPage from "./pages/ResultsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import SimulationPage from "./pages/SimulationPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import MonitoringPage from "./pages/MonitoringPage";
+
+// Demo UI - Isolated from real code, uses mock data only
+import { DemoApp } from "./demo-ui";
 
 // Add Red Hat Display font import to the document head
 if (typeof document !== "undefined") {
@@ -135,6 +141,9 @@ const App: React.FC = () => {
           sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}
         >
           <Routes>
+            {/* Demo Routes - Isolated, offline-only, uses mock data */}
+            <Route path="/demo/*" element={<DemoApp />} />
+            
             <Route path="/login" element={<LoginPage />} />
             <Route
               path="/"
@@ -145,13 +154,16 @@ const App: React.FC = () => {
               }
             >
               <Route index element={<DashboardPage />} />
+              <Route path="projects" element={<ProjectsPage />} />
               <Route path="workloads" element={<WorkloadsPage />} />
               <Route path="platforms" element={<PlatformsPage />} />
               <Route path="scenarios" element={<ScenariosPage />} />
               <Route path="strategies" element={<StrategiesPage />} />
               <Route path="experiments" element={<ExperimentsPage />} />
+              <Route path="simulation" element={<SimulationPage />} />
               <Route path="results" element={<ResultsPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
+              <Route path="monitoring" element={<MonitoringPage />} />
             </Route>
           </Routes>
         </Box>

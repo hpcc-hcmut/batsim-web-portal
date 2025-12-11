@@ -1,4 +1,13 @@
 from .user import User, UserCreate, UserUpdate, Token, TokenData
+from .project import (
+    Project,
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectWithDetails,
+    ProjectWithMembers,
+    ProjectMemberCreate,
+    ProjectMemberResponse,
+)
 from .workload import Workload, WorkloadCreate, WorkloadUpdate, WorkloadWithCreator
 from .platform import Platform, PlatformCreate, PlatformUpdate, PlatformWithCreator
 from .scenario import Scenario, ScenarioCreate, ScenarioUpdate, ScenarioWithDetails
@@ -11,6 +20,28 @@ from .experiment import (
     ExperimentStatusUpdate,
 )
 from .result import Result, ResultCreate, ResultUpdate, ResultWithExperiment
+from .prediction import (
+    PredictionModel,
+    PredictionModelCreate,
+    PredictionModelUpdate,
+    PredictionPreviewRequest,
+    PredictionPreviewResponse,
+    JobPredictionSample,
+    PredictionStats,
+)
+from .audit_log import (
+    AuditLogBase,
+    AuditLogCreate,
+    AuditLogResponse,
+    AuditLogListResponse,
+)
+from .comment import (
+    CommentBase,
+    CommentCreate,
+    CommentUpdate,
+    CommentResponse,
+    CommentThread,
+)
 
 __all__ = [
     "User",
@@ -18,6 +49,13 @@ __all__ = [
     "UserUpdate",
     "Token",
     "TokenData",
+    "Project",
+    "ProjectCreate",
+    "ProjectUpdate",
+    "ProjectWithDetails",
+    "ProjectWithMembers",
+    "ProjectMemberCreate",
+    "ProjectMemberResponse",
     "Workload",
     "WorkloadCreate",
     "WorkloadUpdate",
@@ -43,4 +81,20 @@ __all__ = [
     "ResultCreate",
     "ResultUpdate",
     "ResultWithExperiment",
+    "PredictionModel",
+    "PredictionModelCreate",
+    "PredictionModelUpdate",
+    "PredictionPreviewRequest",
+    "PredictionPreviewResponse",
+    "JobPredictionSample",
+    "PredictionStats",
+    "AuditLogBase",
+    "AuditLogCreate",
+    "AuditLogResponse",
+    "AuditLogListResponse",
+    "CommentBase",
+    "CommentCreate",
+    "CommentUpdate",
+    "CommentResponse",
+    "CommentThread",
 ]

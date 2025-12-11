@@ -1,11 +1,15 @@
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-import os
+"""
+Experiments API - Simulation Control Endpoints
+"""
+
 import json
-import subprocess
-import docker
+import logging
+from typing import List
 from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
+
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User
@@ -20,7 +24,10 @@ from app.schemas.experiment import (
     ExperimentStatusUpdate,
 )
 from app.api.auth import get_current_user
+from app.services.simulation_service import simulation_service
+from app.services.docker_service import docker_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -70,29 +77,26 @@ def create_experiment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Check if scenario and strategy exist
-    scenario = (
-        db.query(Scenario).filter(Scenario.id == experiment_create.scenario_id).first()
-    )
-    strategy = (
-        db.query(Strategy).filter(Strategy.id == experiment_create.strategy_id).first()
-    )
+    scenario = db.query(Scenario).filter(Scenario.id == experiment_create.scenario_id).first()
+    strategy = db.query(Strategy).filter(Strategy.id == experiment_create.strategy_id).first()
     if not scenario or not strategy:
         raise HTTPException(status_code=400, detail="Invalid scenario or strategy")
+    if not scenario.platform or not scenario.workload:
+        raise HTTPException(status_code=400, detail="Scenario needs platform and workload")
+
     exp = Experiment(
         name=experiment_create.name,
         description=experiment_create.description,
         scenario_id=experiment_create.scenario_id,
         strategy_id=experiment_create.strategy_id,
         status=ExperimentStatus.PENDING,
-        config=(
-            json.dumps(experiment_create.config) if experiment_create.config else None
-        ),
+        config=json.dumps(experiment_create.config) if experiment_create.config else None,
         created_by=current_user.id,
     )
     db.add(exp)
     db.commit()
     db.refresh(exp)
+    logger.info(f"Created experiment {exp.id}: {exp.name}")
     return exp
 
 
@@ -106,9 +110,10 @@ def update_experiment(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    # Check permissions (only creator or admin can update)
     if exp.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
+    if exp.status == ExperimentStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Cannot update running experiment")
     for field, value in experiment_update.dict(exclude_unset=True).items():
         setattr(exp, field, value)
     db.commit()
@@ -125,105 +130,112 @@ def delete_experiment(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    # Check permissions (only creator or admin can delete)
     if exp.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
+    if exp.status == ExperimentStatus.RUNNING:
+        try:
+            import asyncio
+            asyncio.run(simulation_service.stop_simulation(experiment_id))
+        except Exception as e:
+            logger.warning(f"Error stopping experiment: {e}")
     db.delete(exp)
     db.commit()
     return {"message": "Experiment deleted successfully"}
 
 
 @router.post("/{experiment_id}/start")
-def start_experiment(
+async def start_experiment(
     experiment_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Start an experiment by running batsim and pybatsim"""
+    """Start a simulation experiment asynchronously."""
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
     if exp.status != ExperimentStatus.PENDING:
-        raise HTTPException(
-            status_code=400, detail="Experiment can only be started from PENDING status"
-        )
+        raise HTTPException(status_code=400, detail=f"Cannot start from {exp.status.value}")
+
+    if not exp.scenario or not exp.scenario.platform or not exp.scenario.workload:
+        raise HTTPException(status_code=400, detail="Invalid scenario configuration")
+    if not exp.strategy:
+        raise HTTPException(status_code=400, detail="No strategy assigned")
+
+    if not docker_service.is_available():
+        raise HTTPException(status_code=503, detail="Docker daemon not available")
+
+    running_count = len(simulation_service.get_running_experiments())
+    if running_count >= settings.MAX_CONCURRENT_SIMULATIONS:
+        raise HTTPException(status_code=429, detail="Max concurrent simulations reached")
 
     try:
-        # Create simulation directory
-        simulation_dir = os.path.join(
-            settings.STORAGE_PATH, "experiments", f"exp_{exp.id}"
-        )
-        os.makedirs(simulation_dir, exist_ok=True)
-
-        # Get platform and workload from scenario
-        if not exp.scenario or not exp.scenario.platform or not exp.scenario.workload:
-            raise HTTPException(
-                status_code=400, detail="Invalid scenario configuration"
-            )
-
-        platform = exp.scenario.platform
-        workload = exp.scenario.workload
-
-        # Copy platform and workload files to simulation directory
-        platform_file = os.path.join(simulation_dir, "platform.xml")
-        workload_file = os.path.join(simulation_dir, "workload.json")
-        strategy_file = os.path.join(simulation_dir, "strategy.py")
-
-        # Copy files (simplified - in real implementation, you'd copy the actual files)
-        # For now, we'll just create placeholder files
-        with open(platform_file, "w") as f:
-            f.write(f"# Platform file for experiment {exp.id} - {platform.name}")
-        with open(workload_file, "w") as f:
-            f.write(f"# Workload file for experiment {exp.id} - {workload.name}")
-        with open(strategy_file, "w") as f:
-            f.write(f"# Strategy file for experiment {exp.id} - {exp.strategy.name}")
-
-        # Update experiment status
-        exp.status = ExperimentStatus.RUNNING
-        exp.start_time = datetime.now()
-        exp.simulation_dir = simulation_dir
-        db.commit()
-
-        # TODO: In a real implementation, you would:
-        # 1. Start batsim container with platform and workload
-        # 2. Start pybatsim container with strategy
-        # 3. Monitor the execution
-        # 4. Update progress and logs
-
-        return {
-            "message": "Experiment started successfully",
-            "simulation_dir": simulation_dir,
-        }
-
-    except Exception as e:
-        exp.status = ExperimentStatus.FAILED
-        db.commit()
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start experiment: {str(e)}"
-        )
+        await simulation_service.start_simulation(experiment_id)
+        logger.info(f"Started experiment {experiment_id} by {current_user.username}")
+        return {"message": "Simulation started", "experiment_id": experiment_id, "status": "running"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{experiment_id}/stop")
-def stop_experiment(
+async def stop_experiment(
     experiment_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Stop a running experiment"""
+    """Stop a running experiment."""
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.status not in (ExperimentStatus.RUNNING, ExperimentStatus.PAUSED):
+        raise HTTPException(status_code=400, detail=f"Not running: {exp.status.value}")
+    try:
+        await simulation_service.stop_simulation(experiment_id)
+        logger.info(f"Stopped experiment {experiment_id}")
+        return {"message": "Stopped", "experiment_id": experiment_id, "status": "cancelled"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.post("/{experiment_id}/pause")
+async def pause_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pause a running experiment."""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
     if exp.status != ExperimentStatus.RUNNING:
-        raise HTTPException(status_code=400, detail="Experiment is not running")
+        raise HTTPException(status_code=400, detail=f"Not running: {exp.status.value}")
+    try:
+        await simulation_service.pause_simulation(experiment_id)
+        return {"message": "Paused", "experiment_id": experiment_id, "status": "paused"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    # TODO: Stop containers and cleanup
-    exp.status = ExperimentStatus.CANCELLED
-    exp.end_time = datetime.now()
-    db.commit()
 
-    return {"message": "Experiment stopped successfully"}
+@router.post("/{experiment_id}/resume")
+async def resume_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Resume a paused experiment."""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.status != ExperimentStatus.PAUSED:
+        raise HTTPException(status_code=400, detail=f"Not paused: {exp.status.value}")
+    try:
+        await simulation_service.resume_simulation(experiment_id)
+        return {"message": "Resumed", "experiment_id": experiment_id, "status": "running"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{experiment_id}/status")
@@ -232,16 +244,83 @@ def get_experiment_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get current status and progress of an experiment"""
+    """Get current status and progress."""
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
+    elapsed = None
+    if exp.start_time:
+        end = exp.end_time or datetime.now()
+        elapsed = int((end - exp.start_time).total_seconds())
+
     return {
-        "status": exp.status,
-        "progress_percentage": exp.progress_percentage,
-        "completed_jobs": exp.completed_jobs,
-        "total_jobs": exp.total_jobs,
-        "start_time": exp.start_time,
-        "end_time": exp.end_time,
+        "experiment_id": experiment_id,
+        "name": exp.name,
+        "status": exp.status.value,
+        "progress_percentage": exp.progress_percentage or 0,
+        "completed_jobs": exp.completed_jobs or 0,
+        "total_jobs": exp.total_jobs or 0,
+        "start_time": exp.start_time.isoformat() if exp.start_time else None,
+        "end_time": exp.end_time.isoformat() if exp.end_time else None,
+        "elapsed_seconds": elapsed,
+        "is_running": simulation_service.is_running(experiment_id),
     }
+
+
+@router.get("/{experiment_id}/logs")
+def get_experiment_logs(
+    experiment_id: int,
+    tail: int = 100,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get logs for an experiment."""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    def last_lines(text, n):
+        if not text:
+            return ""
+        return "\n".join(text.strip().split("\n")[-n:])
+
+    return {
+        "experiment_id": experiment_id,
+        "batsim_logs": last_lines(exp.batsim_logs or "", tail),
+        "pybatsim_logs": last_lines(exp.pybatsim_logs or "", tail),
+    }
+
+
+@router.get("/{experiment_id}/stats")
+async def get_experiment_stats(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get container resource statistics."""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+
+    if exp.status != ExperimentStatus.RUNNING:
+        return {"experiment_id": experiment_id, "status": exp.status.value, "stats": None}
+
+    try:
+        stats = await docker_service.get_container_stats(experiment_id)
+        return {
+            "experiment_id": experiment_id,
+            "status": exp.status.value,
+            "stats": {
+                name: {
+                    "cpu_percent": s.cpu_percent,
+                    "memory_usage_mb": s.memory_usage_mb,
+                    "memory_limit_mb": s.memory_limit_mb,
+                    "memory_percent": s.memory_percent,
+                }
+                for name, s in stats.items()
+            }
+        }
+    except Exception as e:
+        logger.warning(f"Failed to get stats: {e}")
+        return {"experiment_id": experiment_id, "status": exp.status.value, "stats": None}

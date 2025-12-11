@@ -258,7 +258,7 @@ const StrategiesPage: React.FC = () => {
             {strategies.map((s) => {
               const strategyFiles = getStrategyFiles(s);
               return (
-                <Grid item xs={12} sm={6} md={4} key={s.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={s.id}>
                   <Card
                     sx={{
                       borderRadius: 1,

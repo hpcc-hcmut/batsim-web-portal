@@ -95,7 +95,7 @@ const DashboardPage: React.FC = () => {
         // Robustly get experiments array
         const experimentsArr = Array.isArray(experimentsRes.data)
           ? experimentsRes.data
-          : experimentsRes.data.items || [];
+          : (experimentsRes.data as { items?: Experiment[] }).items || [];
         const runningExperiments = experimentsArr.filter(
           (exp: Experiment) => exp.status === "running"
         ).length;
@@ -285,7 +285,7 @@ const DashboardPage: React.FC = () => {
             sx={{ mb: 5, justifyContent: "flex-start" }}
           >
             {statsCards.map((stat) => (
-              <Grid item xs={12} sm={6} md={4} lg={2} key={stat.label}>
+              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }} key={stat.label}>
                 <Card
                   sx={{
                     p: 3,
@@ -358,7 +358,7 @@ const DashboardPage: React.FC = () => {
           ) : (
             <Grid container spacing={2}>
               {filteredExperiments.map((exp) => (
-                <Grid item xs={12} md={6} lg={4} key={exp.id}>
+                <Grid size={{ xs: 12, md: 6, lg: 4 }} key={exp.id}>
                   <Card
                     sx={{
                       borderRadius: 8,

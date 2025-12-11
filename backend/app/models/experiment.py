@@ -6,7 +6,9 @@ import enum
 
 
 class ExperimentStatus(str, enum.Enum):
-    PENDING = "pending"
+    CREATED = "created"       # Initial state when experiment is created
+    QUEUED = "queued"         # Waiting in execution queue
+    PENDING = "pending"       # Legacy - kept for compatibility
     RUNNING = "running"
     PAUSED = "paused"
     COMPLETED = "completed"
@@ -45,12 +47,19 @@ class Experiment(Base):
     batsim_logs = Column(Text)  # Batsim execution logs
     pybatsim_logs = Column(Text)  # Pybatsim execution logs
 
+    # Grafana integration
+    grafana_dashboard_uid = Column(String)  # UID of dynamically created Grafana dashboard
+
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # Project association (FR2)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
 
     # Relationships
     scenario = relationship("Scenario", back_populates="experiments")
     strategy = relationship("Strategy", back_populates="experiments")
     creator = relationship("User", back_populates="experiments")
     results = relationship("Result", back_populates="experiment")
+    project = relationship("Project", back_populates="experiments")
