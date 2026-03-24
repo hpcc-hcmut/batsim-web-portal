@@ -1,6 +1,6 @@
 import axios, { AxiosResponse } from "axios";
 
-const API_BASE_URL = "http://localhost:8000/api";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 // Types
 export interface User {
@@ -55,7 +55,9 @@ export interface Scenario {
   created_at: string;
   updated_at?: string;
   workload_name?: string;
+  workload_version?: number;
   platform_name?: string;
+  platform_version?: number;
   creator_username?: string;
 }
 
@@ -83,6 +85,7 @@ export interface Experiment {
   strategy_id: number;
   status:
     | "pending"
+    | "queued"
     | "running"
     | "paused"
     | "completed"
@@ -97,6 +100,9 @@ export interface Experiment {
   completed_jobs: number;
   progress_percentage: number;
   config?: string;
+  frozen_config?: string;
+  seed?: number;
+  params?: string;
   simulation_dir?: string;
   batsim_logs?: string;
   pybatsim_logs?: string;
@@ -131,6 +137,24 @@ export interface Result {
   jobs_data?: string; // CSV string
   schedule_data?: string; // CSV string
   computed_metrics?: string; // JSON string
+}
+
+// Validation types returned by backend on 422
+export interface ValidationError {
+  field: string;
+  error: string;
+  suggestion: string;
+}
+
+export interface ValidationWarning {
+  field: string;
+  message: string;
+}
+
+export interface ValidationResponse {
+  valid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
 }
 
 export interface LoginCredentials {
@@ -317,7 +341,15 @@ export const experimentsAPI = {
     scenario_id: number;
     strategy_id: number;
     config?: any;
+    seed?: number;
+    params?: Record<string, any>;
   }): Promise<AxiosResponse<Experiment>> => api.post("/experiments", data),
+  getQueue: (): Promise<AxiosResponse<{
+    running: number;
+    queued: number;
+    max_concurrent: number;
+    available_slots: number;
+  }>> => api.get("/experiments/queue"),
   update: (
     id: number,
     data: Partial<Experiment>
@@ -359,6 +391,23 @@ export const resultsAPI = {
   delete: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.delete(`/results/${id}`),
 };
+
+// Templates API
+export const templatesAPI = {
+  download: (type: "workload" | "platform" | "strategy"): string =>
+    `${API_BASE_URL}/templates/${type}`,
+};
+
+// Helper to extract validation errors from axios error
+export function extractValidationErrors(
+  err: any
+): ValidationResponse | null {
+  const detail = err?.response?.data?.detail;
+  if (detail && typeof detail === "object" && "errors" in detail) {
+    return detail as ValidationResponse;
+  }
+  return null;
+}
 
 // System API
 export const systemAPI = {

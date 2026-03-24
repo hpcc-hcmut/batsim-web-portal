@@ -19,6 +19,7 @@ class Platform(Base):
     nb_hosts = Column(Integer, nullable=True)
     nb_clusters = Column(Integer, nullable=True)
     platform_config = Column(Text, nullable=True)  # Store as XML string
+    version = Column(Integer, default=1, nullable=False)
 
     # Relationships
     creator = relationship("User", back_populates="platforms")

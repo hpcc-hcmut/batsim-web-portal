@@ -37,5 +37,7 @@ class Scenario(ScenarioInDB):
 
 class ScenarioWithDetails(Scenario):
     workload_name: Optional[str] = None
+    workload_version: Optional[int] = None
     platform_name: Optional[str] = None
+    platform_version: Optional[int] = None
     creator_username: Optional[str] = None

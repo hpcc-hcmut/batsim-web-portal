@@ -38,7 +38,14 @@ import {
   Code as CodeIcon,
   Computer,
 } from "@mui/icons-material";
-import { platformsAPI, Platform } from "../services/api";
+import {
+  platformsAPI,
+  templatesAPI,
+  extractValidationErrors,
+  Platform,
+  ValidationResponse,
+} from "../services/api";
+import ValidationErrorPanel from "../components/ValidationErrorPanel";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -66,6 +73,8 @@ const PlatformsPage: React.FC = () => {
     severity: "success" | "error";
   }>({ open: false, message: "", severity: "success" });
   const [expandedConfig, setExpandedConfig] = useState(false);
+  const [validationResult, setValidationResult] =
+    useState<ValidationResponse | null>(null);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -95,6 +104,7 @@ const PlatformsPage: React.FC = () => {
     setPanelMode(mode);
     setSelectedPlatform(platform || null);
     setFormError(null);
+    setValidationResult(null);
     if (mode === "add") {
       setForm({ name: "", description: "", file: null });
     } else if (platform) {
@@ -111,6 +121,7 @@ const PlatformsPage: React.FC = () => {
     setDrawerOpen(false);
     setSelectedPlatform(null);
     setFormError(null);
+    setValidationResult(null);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -134,7 +145,12 @@ const PlatformsPage: React.FC = () => {
         severity: "success",
       });
     } catch (err: any) {
-      setFormError("Failed to add platform.");
+      const validation = extractValidationErrors(err);
+      if (validation) {
+        setValidationResult(validation);
+      } else {
+        setFormError("Failed to add platform.");
+      }
     } finally {
       setActionLoading(false);
     }
@@ -492,10 +508,23 @@ const PlatformsPage: React.FC = () => {
                 </FormHelperText>
               </FormControl>
             )}
+            <ValidationErrorPanel validation={validationResult} />
             {formError && (
               <Typography color="error" sx={{ mb: 2 }}>
                 {formError}
               </Typography>
+            )}
+            {panelMode === "add" && (
+              <Button
+                variant="text"
+                size="small"
+                startIcon={<Download />}
+                href={templatesAPI.download("platform")}
+                download
+                sx={{ mb: 2 }}
+              >
+                Download platform template
+              </Button>
             )}
             <Stack direction="row" spacing={2}>
               <Button

@@ -28,6 +28,7 @@ class StrategyInDB(StrategyBase):
     nb_files: Optional[int] = None
     main_entry: Optional[str] = None
     strategy_files: Optional[str] = None
+    version: int = 1
 
     class Config:
         from_attributes = True

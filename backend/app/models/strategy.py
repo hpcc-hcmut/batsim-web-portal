@@ -20,6 +20,7 @@ class Strategy(Base):
     nb_files = Column(Integer, nullable=True)
     main_entry = Column(String, nullable=True)  # Main entry point file
     strategy_files = Column(Text, nullable=True)  # Store as JSON string
+    version = Column(Integer, default=1, nullable=False)
 
     # Relationships
     creator = relationship("User", back_populates="strategies")

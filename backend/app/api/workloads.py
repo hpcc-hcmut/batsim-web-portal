@@ -9,18 +9,30 @@ from app.models.user import User
 from app.models.workload import Workload
 from app.schemas.workload import (
     Workload as WorkloadSchema,
-    WorkloadCreate,
     WorkloadUpdate,
     WorkloadWithCreator,
 )
 from app.api.auth import get_current_user
+from app.services.validators import validate_workload
+from app.services.file_utils import sanitize_filename, safe_file_path
 import json
 
 router = APIRouter()
 
+STORAGE_DIR = os.path.join(settings.STORAGE_PATH, "workloads")
+
 
 def ensure_storage_directory():
-    os.makedirs(os.path.join(settings.STORAGE_PATH, "workloads"), exist_ok=True)
+    os.makedirs(STORAGE_DIR, exist_ok=True)
+
+
+def _parse_and_validate_workload(file_path: str, filename: str):
+    """Validate workload file and extract metadata. Returns (result, data)."""
+    with open(file_path, "r") as f:
+        content = f.read()
+    result = validate_workload(content)
+    data = result.metadata.get("_parsed_data")
+    return result, data
 
 
 @router.get("/", response_model=List[WorkloadWithCreator])
@@ -66,36 +78,41 @@ async def create_workload(
 ):
     ensure_storage_directory()
 
-    # Check if workload with same name exists
-    existing_workload = db.query(Workload).filter(Workload.name == name).first()
-    if existing_workload:
-        raise HTTPException(
-            status_code=400, detail="Workload with this name already exists"
-        )
+    # Check duplicate name
+    if db.query(Workload).filter(Workload.name == name).first():
+        raise HTTPException(status_code=400, detail="Workload with this name already exists")
 
-    # Save file
-    file_path = os.path.join(
-        settings.STORAGE_PATH, "workloads", f"{name}_{file.filename}"
-    )
+    # Check file extension
+    if not (file.content_type == "application/json" or file.filename.endswith(".json")):
+        raise HTTPException(status_code=422, detail={
+            "valid": False,
+            "errors": [{"field": "file", "error": "Workload must be a JSON file (.json)",
+                        "suggestion": "Upload a BatSim JSON workload file"}],
+            "warnings": [],
+        })
+
+    # Save file (sanitize filename to prevent path traversal)
+    safe_name = sanitize_filename(f"{name}_{file.filename}")
+    file_path = safe_file_path(STORAGE_DIR, safe_name)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Parse metadata from file (if JSON)
-    nb_res = None
-    jobs = None
-    profiles = None
-    if file.content_type == "application/json" or file.filename.endswith(".json"):
-        try:
-            file.file.seek(0)
-            file_content = open(file_path, "r").read()
-            data = json.loads(file_content)
-            nb_res = data.get("nb_res")
-            jobs = data.get("jobs")
-            profiles = data.get("profiles")
-        except Exception:
-            pass
+    # Validate content
+    try:
+        validation, data = _parse_and_validate_workload(file_path, file.filename)
+    except Exception as e:
+        os.remove(file_path)
+        raise HTTPException(status_code=422, detail={
+            "valid": False,
+            "errors": [{"field": "file", "error": f"Failed to read file: {e}", "suggestion": ""}],
+            "warnings": [],
+        })
 
-    # Create workload record
+    if not validation.valid:
+        os.remove(file_path)
+        raise HTTPException(status_code=422, detail=validation.to_dict())
+
+    # Create record with extracted metadata
     workload = Workload(
         name=name,
         description=description,
@@ -103,9 +120,10 @@ async def create_workload(
         file_size=file.size,
         file_type=file.content_type,
         created_by=current_user.id,
-        nb_res=nb_res,
-        jobs=json.dumps(jobs) if jobs is not None else None,
-        profiles=json.dumps(profiles) if profiles is not None else None,
+        nb_res=data.get("nb_res") if data else None,
+        jobs=json.dumps(data.get("jobs")) if data and data.get("jobs") else None,
+        profiles=json.dumps(data.get("profiles")) if data and data.get("profiles") else None,
+        version=1,
     )
     db.add(workload)
     db.commit()
@@ -124,7 +142,6 @@ def update_workload(
     if workload is None:
         raise HTTPException(status_code=404, detail="Workload not found")
 
-    # Check permissions (only creator or admin can update)
     if workload.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
@@ -146,11 +163,9 @@ def delete_workload(
     if workload is None:
         raise HTTPException(status_code=404, detail="Workload not found")
 
-    # Check permissions (only creator or admin can delete)
     if workload.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    # Delete file
     if os.path.exists(workload.file_path):
         os.remove(workload.file_path)
 
@@ -191,7 +206,6 @@ async def update_workload_file(
     if workload is None:
         raise HTTPException(status_code=404, detail="Workload not found")
 
-    # Check permissions (only creator or admin can update)
     if workload.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
@@ -202,34 +216,39 @@ async def update_workload_file(
 
     if file is not None:
         ensure_storage_directory()
-        # Remove old file
-        if workload.file_path and os.path.exists(workload.file_path):
-            os.remove(workload.file_path)
-        # Save new file
-        file_path = os.path.join(
-            settings.STORAGE_PATH, "workloads", f"{workload.name}_{file.filename}"
-        )
-        with open(file_path, "wb") as buffer:
+        # Save new file first (sanitize filename)
+        safe_name = sanitize_filename(f"{workload.name}_{file.filename}")
+        new_path = safe_file_path(STORAGE_DIR, safe_name)
+        with open(new_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        workload.file_path = file_path
-        workload.file_size = file.size
-        workload.file_type = file.content_type
-        # Parse metadata from file (if JSON)
-        nb_res = None
-        jobs = None
-        profiles = None
+
+        # Validate if JSON
         if file.content_type == "application/json" or file.filename.endswith(".json"):
             try:
-                file_content = open(file_path, "r").read()
-                data = json.loads(file_content)
-                nb_res = data.get("nb_res")
-                jobs = data.get("jobs")
-                profiles = data.get("profiles")
+                validation, data = _parse_and_validate_workload(new_path, file.filename)
             except Exception:
-                pass
-        workload.nb_res = nb_res
-        workload.jobs = json.dumps(jobs) if jobs is not None else None
-        workload.profiles = json.dumps(profiles) if profiles is not None else None
+                os.remove(new_path)
+                raise HTTPException(status_code=422, detail={
+                    "valid": False,
+                    "errors": [{"field": "file", "error": "Failed to read file", "suggestion": ""}],
+                    "warnings": [],
+                })
+
+            if not validation.valid:
+                os.remove(new_path)
+                raise HTTPException(status_code=422, detail=validation.to_dict())
+
+            workload.nb_res = data.get("nb_res") if data else None
+            workload.jobs = json.dumps(data.get("jobs")) if data and data.get("jobs") else None
+            workload.profiles = json.dumps(data.get("profiles")) if data and data.get("profiles") else None
+
+        # Remove old file and update record
+        if workload.file_path and os.path.exists(workload.file_path):
+            os.remove(workload.file_path)
+        workload.file_path = new_path
+        workload.file_size = file.size
+        workload.file_type = file.content_type
+        workload.version = (workload.version or 0) + 1
 
     db.commit()
     db.refresh(workload)

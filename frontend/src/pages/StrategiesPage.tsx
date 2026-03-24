@@ -38,7 +38,14 @@ import {
   Description,
   Code as CodeIcon,
 } from "@mui/icons-material";
-import { strategiesAPI, Strategy } from "../services/api";
+import {
+  strategiesAPI,
+  templatesAPI,
+  extractValidationErrors,
+  Strategy,
+  ValidationResponse,
+} from "../services/api";
+import ValidationErrorPanel from "../components/ValidationErrorPanel";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -67,6 +74,8 @@ const StrategiesPage: React.FC = () => {
     severity: "success" | "error";
   }>({ open: false, message: "", severity: "success" });
   const [expandedCode, setExpandedCode] = useState(false);
+  const [validationResult, setValidationResult] =
+    useState<ValidationResponse | null>(null);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -96,6 +105,7 @@ const StrategiesPage: React.FC = () => {
     setPanelMode(mode);
     setSelectedStrategy(strategy || null);
     setFormError(null);
+    setValidationResult(null);
     if (mode === "add") {
       setForm({ name: "", description: "", file: null });
     } else if (strategy) {
@@ -112,6 +122,7 @@ const StrategiesPage: React.FC = () => {
     setDrawerOpen(false);
     setSelectedStrategy(null);
     setFormError(null);
+    setValidationResult(null);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -135,7 +146,12 @@ const StrategiesPage: React.FC = () => {
         severity: "success",
       });
     } catch (err: any) {
-      setFormError("Failed to add strategy.");
+      const validation = extractValidationErrors(err);
+      if (validation) {
+        setValidationResult(validation);
+      } else {
+        setFormError("Failed to add strategy.");
+      }
     } finally {
       setActionLoading(false);
     }
@@ -532,10 +548,23 @@ const StrategiesPage: React.FC = () => {
                 </FormHelperText>
               </FormControl>
             )}
+            <ValidationErrorPanel validation={validationResult} />
             {formError && (
               <Typography color="error" sx={{ mb: 2 }}>
                 {formError}
               </Typography>
+            )}
+            {panelMode === "add" && (
+              <Button
+                variant="text"
+                size="small"
+                startIcon={<Download />}
+                href={templatesAPI.download("strategy")}
+                download
+                sx={{ mb: 2 }}
+              >
+                Download strategy template
+              </Button>
             )}
             <Stack direction="row" spacing={2}>
               <Button

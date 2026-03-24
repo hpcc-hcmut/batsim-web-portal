@@ -1,0 +1,20 @@
+<?xml version='1.0'?>
+<!DOCTYPE platform SYSTEM "http://simgrid.gforge.inria.fr/simgrid/simgrid.dtd">
+<platform version="4">
+  <AS id="AS0" routing="Full">
+    <!-- 4-node cluster for simulation -->
+    <cluster id="cluster_1" prefix="node-" suffix="" radical="0-3"
+             speed="1Gf" bw="125MBps" lat="50us" router_id="router1"/>
+
+    <!-- BatSim management host (required) -->
+    <AS id="AS_master" routing="Full">
+      <host id="master_host" speed="1Gf"/>
+    </AS>
+
+    <!-- Network backbone connecting cluster to master -->
+    <link id="backbone" bandwidth="1.25GBps" latency="500us" sharing_policy="FATPIPE"/>
+    <ASroute src="cluster_1" dst="AS_master" gw_src="router1" gw_dst="master_host">
+      <link_ctn id="backbone"/>
+    </ASroute>
+  </AS>
+</platform>

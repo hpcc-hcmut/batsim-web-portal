@@ -28,6 +28,7 @@ class WorkloadInDB(WorkloadBase):
     nb_res: Optional[int] = None
     jobs: Optional[list] = None
     profiles: Optional[dict] = None
+    version: int = 1
 
     class Config:
         from_attributes = True

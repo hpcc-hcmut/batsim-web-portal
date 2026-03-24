@@ -19,6 +19,7 @@ class Workload(Base):
     nb_res = Column(Integer, nullable=True)
     jobs = Column(Text, nullable=True)  # Store as JSON string
     profiles = Column(Text, nullable=True)  # Store as JSON string
+    version = Column(Integer, default=1, nullable=False)
 
     # Relationships
     creator = relationship("User", back_populates="workloads")

@@ -39,7 +39,14 @@ import {
   Code as CodeIcon,
 } from "@mui/icons-material";
 import { Storage } from "@mui/icons-material";
-import { workloadsAPI, Workload } from "../services/api";
+import {
+  workloadsAPI,
+  templatesAPI,
+  extractValidationErrors,
+  Workload,
+  ValidationResponse,
+} from "../services/api";
+import ValidationErrorPanel from "../components/ValidationErrorPanel";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -74,6 +81,8 @@ const WorkloadsPage: React.FC = () => {
   }>({ open: false, message: "", severity: "success" });
   const [expandedJobs, setExpandedJobs] = useState(false);
   const [expandedProfiles, setExpandedProfiles] = useState(false);
+  const [validationResult, setValidationResult] =
+    useState<ValidationResponse | null>(null);
 
   useEffect(() => {
     const fetchWorkloads = async () => {
@@ -101,11 +110,13 @@ const WorkloadsPage: React.FC = () => {
     });
     setDrawerOpen(true);
     setFormError(null);
+    setValidationResult(null);
   };
   const closeDrawer = () => {
     setDrawerOpen(false);
     setSelectedWorkload(null);
     setFormError(null);
+    setValidationResult(null);
   };
   const handleDelete = async () => {
     if (!selectedWorkload) return;
@@ -175,7 +186,15 @@ const WorkloadsPage: React.FC = () => {
         severity: "success",
       });
     } catch (err: any) {
-      setFormError("Failed to add workload.");
+      const validation = extractValidationErrors(err);
+      if (validation) {
+        setValidationResult(validation);
+        setFormError(null);
+      } else {
+        setFormError(
+          err?.response?.data?.detail || "Failed to add workload."
+        );
+      }
     } finally {
       setActionLoading(false);
     }
@@ -518,6 +537,7 @@ const WorkloadsPage: React.FC = () => {
                 </FormHelperText>
               </FormControl>
             )}
+            <ValidationErrorPanel validation={validationResult} />
             {formError && (
               <Typography color="error" sx={{ mb: 2 }}>
                 {formError}
@@ -546,6 +566,17 @@ const WorkloadsPage: React.FC = () => {
                 Cancel
               </Button>
             </Stack>
+            {panelMode === "add" && (
+              <Button
+                variant="text"
+                size="small"
+                href={templatesAPI.download("workload")}
+                download
+                sx={{ mt: 1, textTransform: "none" }}
+              >
+                Download workload template (.json)
+              </Button>
+            )}
           </Box>
         )}
         {/* Delete Confirmation Dialog */}

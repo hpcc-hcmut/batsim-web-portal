@@ -1,0 +1,41 @@
+{
+  "description": "Template workload for BatSim - 4 nodes, 3 jobs",
+  "nb_res": 4,
+  "jobs": [
+    {
+      "id": 0,
+      "subtime": 0,
+      "walltime": 100,
+      "res": 2,
+      "profile": "small"
+    },
+    {
+      "id": 1,
+      "subtime": 10,
+      "walltime": 200,
+      "res": 1,
+      "profile": "medium"
+    },
+    {
+      "id": 2,
+      "subtime": 30,
+      "walltime": 300,
+      "res": 4,
+      "profile": "large"
+    }
+  ],
+  "profiles": {
+    "small": {
+      "type": "delay",
+      "delay": 50
+    },
+    "medium": {
+      "type": "delay",
+      "delay": 100
+    },
+    "large": {
+      "type": "delay",
+      "delay": 200
+    }
+  }
+}

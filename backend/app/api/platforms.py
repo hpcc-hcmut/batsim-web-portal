@@ -3,24 +3,33 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import os
 import shutil
-import xml.etree.ElementTree as ET
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User
 from app.models.platform import Platform
 from app.schemas.platform import (
     Platform as PlatformSchema,
-    PlatformCreate,
     PlatformUpdate,
     PlatformWithCreator,
 )
 from app.api.auth import get_current_user
+from app.services.validators import validate_platform
+from app.services.file_utils import sanitize_filename, safe_file_path
 
 router = APIRouter()
 
+STORAGE_DIR = os.path.join(settings.STORAGE_PATH, "platforms")
+
 
 def ensure_storage_directory():
-    os.makedirs(os.path.join(settings.STORAGE_PATH, "platforms"), exist_ok=True)
+    os.makedirs(STORAGE_DIR, exist_ok=True)
+
+
+def _parse_and_validate_platform(file_path: str):
+    """Validate platform file and return validation result."""
+    with open(file_path, "r") as f:
+        content = f.read()
+    return validate_platform(content), content
 
 
 @router.get("/", response_model=List[PlatformWithCreator])
@@ -64,37 +73,39 @@ async def create_platform(
     current_user: User = Depends(get_current_user),
 ):
     ensure_storage_directory()
-    # Check if platform with same name exists
-    existing_platform = db.query(Platform).filter(Platform.name == name).first()
-    if existing_platform:
-        raise HTTPException(
-            status_code=400, detail="Platform with this name already exists"
-        )
-    # Save file
-    file_path = os.path.join(
-        settings.STORAGE_PATH, "platforms", f"{name}_{file.filename}"
-    )
+
+    if db.query(Platform).filter(Platform.name == name).first():
+        raise HTTPException(status_code=400, detail="Platform with this name already exists")
+
+    if not (file.content_type == "application/xml" or file.filename.endswith(".xml")):
+        raise HTTPException(status_code=422, detail={
+            "valid": False,
+            "errors": [{"field": "file", "error": "Platform must be an XML file (.xml)",
+                        "suggestion": "Upload a SimGrid XML platform file"}],
+            "warnings": [],
+        })
+
+    # Save file (sanitize filename to prevent path traversal)
+    safe_name = sanitize_filename(f"{name}_{file.filename}")
+    file_path = safe_file_path(STORAGE_DIR, safe_name)
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Parse metadata from file (if XML)
-    nb_hosts = None
-    nb_clusters = None
-    platform_config = None
-    if file.content_type == "application/xml" or file.filename.endswith(".xml"):
-        try:
-            file_content = open(file_path, "r").read()
-            platform_config = file_content
-            root = ET.fromstring(file_content)
-            # Count hosts and clusters
-            hosts = root.findall(".//host")
-            clusters = root.findall(".//cluster")
-            nb_hosts = len(hosts)
-            nb_clusters = len(clusters)
-        except Exception:
-            pass
+    # Validate
+    try:
+        validation, content = _parse_and_validate_platform(file_path)
+    except Exception as e:
+        os.remove(file_path)
+        raise HTTPException(status_code=422, detail={
+            "valid": False,
+            "errors": [{"field": "file", "error": f"Failed to read file: {e}", "suggestion": ""}],
+            "warnings": [],
+        })
 
-    # Create platform record
+    if not validation.valid:
+        os.remove(file_path)
+        raise HTTPException(status_code=422, detail=validation.to_dict())
+
     platform = Platform(
         name=name,
         description=description,
@@ -102,9 +113,10 @@ async def create_platform(
         file_size=file.size,
         file_type=file.content_type,
         created_by=current_user.id,
-        nb_hosts=nb_hosts,
-        nb_clusters=nb_clusters,
-        platform_config=platform_config,
+        nb_hosts=validation.metadata.get("nb_hosts"),
+        nb_clusters=validation.metadata.get("nb_clusters"),
+        platform_config=content,
+        version=1,
     )
     db.add(platform)
     db.commit()
@@ -122,7 +134,6 @@ def update_platform(
     platform = db.query(Platform).filter(Platform.id == platform_id).first()
     if platform is None:
         raise HTTPException(status_code=404, detail="Platform not found")
-    # Check permissions (only creator or admin can update)
     if platform.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
     for field, value in platform_update.dict(exclude_unset=True).items():
@@ -145,7 +156,6 @@ async def update_platform_file(
     if platform is None:
         raise HTTPException(status_code=404, detail="Platform not found")
 
-    # Check permissions (only creator or admin can update)
     if platform.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
@@ -156,37 +166,36 @@ async def update_platform_file(
 
     if file is not None:
         ensure_storage_directory()
-        # Remove old file
-        if platform.file_path and os.path.exists(platform.file_path):
-            os.remove(platform.file_path)
-        # Save new file
-        file_path = os.path.join(
-            settings.STORAGE_PATH, "platforms", f"{platform.name}_{file.filename}"
-        )
-        with open(file_path, "wb") as buffer:
+        safe_name = sanitize_filename(f"{platform.name}_{file.filename}")
+        new_path = safe_file_path(STORAGE_DIR, safe_name)
+        with open(new_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        platform.file_path = file_path
-        platform.file_size = file.size
-        platform.file_type = file.content_type
-        # Parse metadata from file (if XML)
-        nb_hosts = None
-        nb_clusters = None
-        platform_config = None
+
         if file.content_type == "application/xml" or file.filename.endswith(".xml"):
             try:
-                file_content = open(file_path, "r").read()
-                platform_config = file_content
-                root = ET.fromstring(file_content)
-                # Count hosts and clusters
-                hosts = root.findall(".//host")
-                clusters = root.findall(".//cluster")
-                nb_hosts = len(hosts)
-                nb_clusters = len(clusters)
+                validation, content = _parse_and_validate_platform(new_path)
             except Exception:
-                pass
-        platform.nb_hosts = nb_hosts
-        platform.nb_clusters = nb_clusters
-        platform.platform_config = platform_config
+                os.remove(new_path)
+                raise HTTPException(status_code=422, detail={
+                    "valid": False,
+                    "errors": [{"field": "file", "error": "Failed to read file", "suggestion": ""}],
+                    "warnings": [],
+                })
+
+            if not validation.valid:
+                os.remove(new_path)
+                raise HTTPException(status_code=422, detail=validation.to_dict())
+
+            platform.nb_hosts = validation.metadata.get("nb_hosts")
+            platform.nb_clusters = validation.metadata.get("nb_clusters")
+            platform.platform_config = content
+
+        if platform.file_path and os.path.exists(platform.file_path):
+            os.remove(platform.file_path)
+        platform.file_path = new_path
+        platform.file_size = file.size
+        platform.file_type = file.content_type
+        platform.version = (platform.version or 0) + 1
 
     db.commit()
     db.refresh(platform)
@@ -202,10 +211,8 @@ def delete_platform(
     platform = db.query(Platform).filter(Platform.id == platform_id).first()
     if platform is None:
         raise HTTPException(status_code=404, detail="Platform not found")
-    # Check permissions (only creator or admin can delete)
     if platform.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
-    # Delete file
     if os.path.exists(platform.file_path):
         os.remove(platform.file_path)
     db.delete(platform)

@@ -28,6 +28,7 @@ class PlatformInDB(PlatformBase):
     nb_hosts: Optional[int] = None
     nb_clusters: Optional[int] = None
     platform_config: Optional[str] = None
+    version: int = 1
 
     class Config:
         from_attributes = True
