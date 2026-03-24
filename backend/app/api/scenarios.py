@@ -25,17 +25,21 @@ def get_scenarios(
     current_user: User = Depends(get_current_user),
 ):
     scenarios = db.query(Scenario).offset(skip).limit(limit).all()
-    result = []
-    for scenario in scenarios:
-        scenario_dict = ScenarioWithDetails.from_orm(scenario)
-        if scenario.workload:
-            scenario_dict.workload_name = scenario.workload.name
-        if scenario.platform:
-            scenario_dict.platform_name = scenario.platform.name
-        if scenario.creator:
-            scenario_dict.creator_username = scenario.creator.username
-        result.append(scenario_dict)
-    return result
+    return [_enrich_scenario(s) for s in scenarios]
+
+
+def _enrich_scenario(scenario: Scenario) -> ScenarioWithDetails:
+    """Add related names and versions to scenario response."""
+    d = ScenarioWithDetails.from_orm(scenario)
+    if scenario.workload:
+        d.workload_name = scenario.workload.name
+        d.workload_version = getattr(scenario.workload, "version", None) or 1
+    if scenario.platform:
+        d.platform_name = scenario.platform.name
+        d.platform_version = getattr(scenario.platform, "version", None) or 1
+    if scenario.creator:
+        d.creator_username = scenario.creator.username
+    return d
 
 
 @router.get("/{scenario_id}", response_model=ScenarioWithDetails)
@@ -47,14 +51,7 @@ def get_scenario(
     scenario = db.query(Scenario).filter(Scenario.id == scenario_id).first()
     if scenario is None:
         raise HTTPException(status_code=404, detail="Scenario not found")
-    scenario_dict = ScenarioWithDetails.from_orm(scenario)
-    if scenario.workload:
-        scenario_dict.workload_name = scenario.workload.name
-    if scenario.platform:
-        scenario_dict.platform_name = scenario.platform.name
-    if scenario.creator:
-        scenario_dict.creator_username = scenario.creator.username
-    return scenario_dict
+    return _enrich_scenario(scenario)
 
 
 @router.post("/", response_model=ScenarioSchema)

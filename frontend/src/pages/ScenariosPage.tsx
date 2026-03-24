@@ -87,8 +87,10 @@ const ScenariosPage: React.FC = () => {
                         {s.name}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Workload: {s.workload_name || "-"} | Platform:{" "}
+                        Workload: {s.workload_name || "-"}
+                        {s.workload_version ? ` (v${s.workload_version})` : ""} | Platform:{" "}
                         {s.platform_name || "-"}
+                        {s.platform_version ? ` (v${s.platform_version})` : ""}
                       </Typography>
                     </Box>
                   </Stack>

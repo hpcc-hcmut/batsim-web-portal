@@ -7,6 +7,7 @@ import enum
 
 class ExperimentStatus(str, enum.Enum):
     PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
     PAUSED = "paused"
     COMPLETED = "completed"
@@ -40,6 +41,9 @@ class Experiment(Base):
 
     # Configuration
     config = Column(Text)  # JSON string of experiment configuration
+    frozen_config = Column(Text)  # Immutable JSON snapshot of workload/platform/strategy versions + paths
+    seed = Column(Integer)  # Random seed for reproducibility
+    params = Column(Text)  # JSON string of additional simulation parameters
     # Execution details
     simulation_dir = Column(String)  # Directory where simulation files are stored
     batsim_logs = Column(Text)  # Batsim execution logs

@@ -1,5 +1,3 @@
-import os
-from typing import Optional
 from pydantic_settings import BaseSettings
 
 
@@ -16,12 +14,21 @@ class Settings(BaseSettings):
     STORAGE_PATH: str = "./storage"
     MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB
 
-    # Docker
-    BATSIM_IMAGE: str = "batsim/batsim:latest"
-    PYBATSIM_IMAGE: str = "batsim/pybatsim:latest"
+    # Docker — BatSim images
+    BATSIM_IMAGE: str = "oarteam/batsim:latest"
+    PYBATSIM_IMAGE: str = "tanaxer/pybatsim:latest"
+
+    # Simulation
+    MAX_CONCURRENT_SIMULATIONS: int = 3
+    SIMULATION_TIMEOUT_SECONDS: int = 3600
+    SIMULATION_DATA_PATH: str = "./storage/experiments"
 
     # CORS
-    BACKEND_CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:5173"]
+    BACKEND_CORS_ORIGINS: list = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8080",
+    ]
 
     class Config:
         env_file = ".env"

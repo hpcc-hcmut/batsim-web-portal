@@ -13,13 +13,14 @@ class ExperimentBase(BaseModel):
 
 class ExperimentCreate(ExperimentBase):
     config: Optional[Dict[str, Any]] = None
+    seed: Optional[int] = None
+    params: Optional[Dict[str, Any]] = None
 
 
 class ExperimentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[ExperimentStatus] = None
-    config: Optional[Dict[str, Any]] = None
+    # status intentionally excluded — use /start and /stop endpoints for state transitions
 
 
 class ExperimentInDB(ExperimentBase):
@@ -34,6 +35,9 @@ class ExperimentInDB(ExperimentBase):
     completed_jobs: int = 0
     progress_percentage: int = 0
     config: Optional[str] = None
+    frozen_config: Optional[str] = None
+    seed: Optional[int] = None
+    params: Optional[str] = None
     simulation_dir: Optional[str] = None
     batsim_logs: Optional[str] = None
     pybatsim_logs: Optional[str] = None

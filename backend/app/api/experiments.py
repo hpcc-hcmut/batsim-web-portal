@@ -1,11 +1,9 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-import os
 import json
-import subprocess
-import docker
-from datetime import datetime
+import os
+import shutil
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User
@@ -17,11 +15,30 @@ from app.schemas.experiment import (
     ExperimentCreate,
     ExperimentUpdate,
     ExperimentWithDetails,
-    ExperimentStatusUpdate,
 )
 from app.api.auth import get_current_user
+from app.services.experiment_bundle_service import freeze_experiment_config
+from app.services.experiment_queue_service import (
+    enqueue_experiment,
+    cancel_experiment,
+    get_queue_status,
+    process_queue,
+    InvalidTransitionError,
+)
 
 router = APIRouter()
+
+
+def _enrich_experiment(exp: Experiment) -> ExperimentWithDetails:
+    """Add related names to experiment response."""
+    exp_dict = ExperimentWithDetails.from_orm(exp)
+    if exp.scenario:
+        exp_dict.scenario_name = exp.scenario.name
+    if exp.strategy:
+        exp_dict.strategy_name = exp.strategy.name
+    if exp.creator:
+        exp_dict.creator_username = exp.creator.username
+    return exp_dict
 
 
 @router.get("/", response_model=List[ExperimentWithDetails])
@@ -32,17 +49,16 @@ def get_experiments(
     current_user: User = Depends(get_current_user),
 ):
     experiments = db.query(Experiment).offset(skip).limit(limit).all()
-    result = []
-    for exp in experiments:
-        exp_dict = ExperimentWithDetails.from_orm(exp)
-        if exp.scenario:
-            exp_dict.scenario_name = exp.scenario.name
-        if exp.strategy:
-            exp_dict.strategy_name = exp.strategy.name
-        if exp.creator:
-            exp_dict.creator_username = exp.creator.username
-        result.append(exp_dict)
-    return result
+    return [_enrich_experiment(exp) for exp in experiments]
+
+
+@router.get("/queue", response_model=None)
+def get_experiment_queue(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get current queue status."""
+    return get_queue_status(db)
 
 
 @router.get("/{experiment_id}", response_model=ExperimentWithDetails)
@@ -54,14 +70,7 @@ def get_experiment(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    exp_dict = ExperimentWithDetails.from_orm(exp)
-    if exp.scenario:
-        exp_dict.scenario_name = exp.scenario.name
-    if exp.strategy:
-        exp_dict.strategy_name = exp.strategy.name
-    if exp.creator:
-        exp_dict.creator_username = exp.creator.username
-    return exp_dict
+    return _enrich_experiment(exp)
 
 
 @router.post("/", response_model=ExperimentSchema)
@@ -70,29 +79,57 @@ def create_experiment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Check if scenario and strategy exist
-    scenario = (
-        db.query(Scenario).filter(Scenario.id == experiment_create.scenario_id).first()
-    )
-    strategy = (
-        db.query(Strategy).filter(Strategy.id == experiment_create.strategy_id).first()
-    )
+    """Create experiment with frozen config snapshot."""
+    scenario = db.query(Scenario).filter(
+        Scenario.id == experiment_create.scenario_id
+    ).first()
+    strategy = db.query(Strategy).filter(
+        Strategy.id == experiment_create.strategy_id
+    ).first()
     if not scenario or not strategy:
         raise HTTPException(status_code=400, detail="Invalid scenario or strategy")
+
+    # Create experiment record first (need ID for bundle dir)
+    seed = experiment_create.seed
+    params = experiment_create.params
     exp = Experiment(
         name=experiment_create.name,
         description=experiment_create.description,
         scenario_id=experiment_create.scenario_id,
         strategy_id=experiment_create.strategy_id,
         status=ExperimentStatus.PENDING,
-        config=(
-            json.dumps(experiment_create.config) if experiment_create.config else None
-        ),
+        config=json.dumps(experiment_create.config) if experiment_create.config else None,
+        seed=seed,
+        params=json.dumps(params) if params else None,
         created_by=current_user.id,
     )
     db.add(exp)
     db.commit()
     db.refresh(exp)
+
+    # Freeze config — copy files and snapshot versions
+    try:
+        frozen = freeze_experiment_config(
+            db=db,
+            experiment_id=exp.id,
+            scenario_id=experiment_create.scenario_id,
+            strategy_id=experiment_create.strategy_id,
+            seed=seed,
+            params=params,
+        )
+        exp.frozen_config = json.dumps(frozen)
+        exp.simulation_dir = frozen["frozen_files"].get("workload_path", "").rsplit("/", 1)[0]
+        db.commit()
+        db.refresh(exp)
+    except ValueError as e:
+        # Cleanup DB record and any partially-copied files
+        exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(exp.id))
+        if os.path.exists(exp_dir):
+            shutil.rmtree(exp_dir, ignore_errors=True)
+        db.delete(exp)
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+
     return exp
 
 
@@ -106,7 +143,6 @@ def update_experiment(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    # Check permissions (only creator or admin can update)
     if exp.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
     for field, value in experiment_update.dict(exclude_unset=True).items():
@@ -125,9 +161,12 @@ def delete_experiment(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    # Check permissions (only creator or admin can delete)
     if exp.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Cleanup frozen files on disk
+    exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(exp.id))
+    if os.path.exists(exp_dir):
+        shutil.rmtree(exp_dir, ignore_errors=True)
     db.delete(exp)
     db.commit()
     return {"message": "Experiment deleted successfully"}
@@ -139,69 +178,25 @@ def start_experiment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Start an experiment by running batsim and pybatsim"""
-    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
-    if exp is None:
-        raise HTTPException(status_code=404, detail="Experiment not found")
+    """Enqueue experiment for execution (PENDING → QUEUED).
 
-    if exp.status != ExperimentStatus.PENDING:
-        raise HTTPException(
-            status_code=400, detail="Experiment can only be started from PENDING status"
-        )
-
+    The queue service will promote QUEUED → RUNNING when a slot is available.
+    Actual container orchestration happens in Phase 3.
+    """
     try:
-        # Create simulation directory
-        simulation_dir = os.path.join(
-            settings.STORAGE_PATH, "experiments", f"exp_{exp.id}"
-        )
-        os.makedirs(simulation_dir, exist_ok=True)
-
-        # Get platform and workload from scenario
-        if not exp.scenario or not exp.scenario.platform or not exp.scenario.workload:
-            raise HTTPException(
-                status_code=400, detail="Invalid scenario configuration"
-            )
-
-        platform = exp.scenario.platform
-        workload = exp.scenario.workload
-
-        # Copy platform and workload files to simulation directory
-        platform_file = os.path.join(simulation_dir, "platform.xml")
-        workload_file = os.path.join(simulation_dir, "workload.json")
-        strategy_file = os.path.join(simulation_dir, "strategy.py")
-
-        # Copy files (simplified - in real implementation, you'd copy the actual files)
-        # For now, we'll just create placeholder files
-        with open(platform_file, "w") as f:
-            f.write(f"# Platform file for experiment {exp.id} - {platform.name}")
-        with open(workload_file, "w") as f:
-            f.write(f"# Workload file for experiment {exp.id} - {workload.name}")
-        with open(strategy_file, "w") as f:
-            f.write(f"# Strategy file for experiment {exp.id} - {exp.strategy.name}")
-
-        # Update experiment status
-        exp.status = ExperimentStatus.RUNNING
-        exp.start_time = datetime.now()
-        exp.simulation_dir = simulation_dir
-        db.commit()
-
-        # TODO: In a real implementation, you would:
-        # 1. Start batsim container with platform and workload
-        # 2. Start pybatsim container with strategy
-        # 3. Monitor the execution
-        # 4. Update progress and logs
-
+        exp = enqueue_experiment(db, experiment_id)
+        # Try to promote queued experiments immediately
+        promoted = process_queue(db)
         return {
-            "message": "Experiment started successfully",
-            "simulation_dir": simulation_dir,
+            "message": f"Experiment queued (position in queue)",
+            "status": exp.status.value,
+            "promoted": promoted,
+            "queue": get_queue_status(db),
         }
-
-    except Exception as e:
-        exp.status = ExperimentStatus.FAILED
-        db.commit()
-        raise HTTPException(
-            status_code=500, detail=f"Failed to start experiment: {str(e)}"
-        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("/{experiment_id}/stop")
@@ -210,20 +205,20 @@ def stop_experiment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Stop a running experiment"""
-    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
-    if exp is None:
-        raise HTTPException(status_code=404, detail="Experiment not found")
-
-    if exp.status != ExperimentStatus.RUNNING:
-        raise HTTPException(status_code=400, detail="Experiment is not running")
-
-    # TODO: Stop containers and cleanup
-    exp.status = ExperimentStatus.CANCELLED
-    exp.end_time = datetime.now()
-    db.commit()
-
-    return {"message": "Experiment stopped successfully"}
+    """Cancel an experiment (from QUEUED or RUNNING)."""
+    try:
+        exp = cancel_experiment(db, experiment_id)
+        # Process queue — may promote next queued experiment
+        promoted = process_queue(db)
+        return {
+            "message": "Experiment cancelled",
+            "status": exp.status.value,
+            "promoted": promoted,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/{experiment_id}/status")
@@ -232,10 +227,17 @@ def get_experiment_status(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get current status and progress of an experiment"""
+    """Get current status, progress, and frozen config of an experiment."""
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
+
+    frozen = None
+    if exp.frozen_config:
+        try:
+            frozen = json.loads(exp.frozen_config)
+        except json.JSONDecodeError:
+            frozen = None
 
     return {
         "status": exp.status,
@@ -244,4 +246,6 @@ def get_experiment_status(
         "total_jobs": exp.total_jobs,
         "start_time": exp.start_time,
         "end_time": exp.end_time,
+        "seed": exp.seed,
+        "frozen_config": frozen,
     }

@@ -3,11 +3,42 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
 from sqlalchemy.orm import Session
+from sqlalchemy import inspect, text
 from app.core.security import get_password_hash
 from app.models.user import UserRole
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+
+def run_migrations():
+    """Add missing columns to existing SQLite tables (lightweight migration)."""
+    inspector = inspect(engine)
+    migrations = {
+        "experiments": {
+            "frozen_config": "TEXT",
+            "seed": "INTEGER",
+            "params": "TEXT",
+        },
+        "workloads": {"version": "INTEGER DEFAULT 1"},
+        "platforms": {"version": "INTEGER DEFAULT 1"},
+        "strategies": {"version": "INTEGER DEFAULT 1"},
+    }
+    with engine.connect() as conn:
+        for table, columns in migrations.items():
+            if not inspector.has_table(table):
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            for col_name, col_type in columns.items():
+                if col_name not in existing:
+                    # Safe: table/col_name/col_type are hardcoded above, not user input
+                    stmt = f"ALTER TABLE {table} ADD COLUMN {col_name} {col_type}"
+                    conn.execute(text(stmt))
+                    print(f"[MIGRATION] Added {table}.{col_name} ({col_type})")
+        conn.commit()
+
+
+run_migrations()
 
 app = FastAPI(
     title="BatSim Web Portal API",
@@ -37,6 +68,7 @@ from app.api import (
     experiments,
     results,
     system,
+    templates,
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -47,6 +79,7 @@ app.include_router(strategies.router, prefix="/api/strategies", tags=["Strategie
 app.include_router(experiments.router, prefix="/api/experiments", tags=["Experiments"])
 app.include_router(results.router, prefix="/api/results", tags=["Results"])
 app.include_router(system.router, prefix="/api/system", tags=["System"])
+app.include_router(templates.router, prefix="/api/templates", tags=["Templates"])
 
 
 def seed_admin_user():

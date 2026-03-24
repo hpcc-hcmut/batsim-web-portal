@@ -84,6 +84,7 @@ const ExperimentsPage: React.FC = () => {
     description: "",
     scenario_id: "",
     strategy_id: "",
+    seed: "",
   });
 
   useEffect(() => {
@@ -128,6 +129,7 @@ const ExperimentsPage: React.FC = () => {
         description: formData.description,
         scenario_id: parseInt(formData.scenario_id),
         strategy_id: parseInt(formData.strategy_id),
+        seed: formData.seed ? parseInt(formData.seed) : undefined,
       });
       setCreateDialogOpen(false);
       setFormData({
@@ -135,6 +137,7 @@ const ExperimentsPage: React.FC = () => {
         description: "",
         scenario_id: "",
         strategy_id: "",
+        seed: "",
       });
       setSnackbar({
         open: true,
@@ -212,6 +215,8 @@ const ExperimentsPage: React.FC = () => {
     switch (status) {
       case "pending":
         return "default";
+      case "queued":
+        return "info";
       case "running":
         return "primary";
       case "completed":
@@ -342,7 +347,7 @@ const ExperimentsPage: React.FC = () => {
                       Start
                     </Button>
                   )}
-                  {e.status === "running" && (
+                  {(e.status === "running" || e.status === "queued") && (
                     <Button
                       variant="contained"
                       color="error"
@@ -353,7 +358,7 @@ const ExperimentsPage: React.FC = () => {
                         handleStopExperiment(e.id);
                       }}
                     >
-                      Stop
+                      {e.status === "queued" ? "Cancel" : "Stop"}
                     </Button>
                   )}
                 </CardContent>
@@ -424,6 +429,15 @@ const ExperimentsPage: React.FC = () => {
                 ))}
               </Select>
             </FormControl>
+            <TextField
+              label="Seed (optional)"
+              type="number"
+              value={formData.seed}
+              onChange={(e) =>
+                setFormData({ ...formData, seed: e.target.value })
+              }
+              helperText="Random seed for reproducibility. Leave empty for auto-generated."
+            />
           </Stack>
         </DialogContent>
         <DialogActions>
@@ -485,7 +499,7 @@ const ExperimentsPage: React.FC = () => {
               <Divider />
 
               <Typography variant="h6">Components</Typography>
-              <Stack direction="row" spacing={2}>
+              <Stack direction="row" spacing={2} flexWrap="wrap" gap={1}>
                 <Chip
                   label={`Scenario: ${selectedExperiment?.scenario_name}`}
                   color="primary"
@@ -494,7 +508,44 @@ const ExperimentsPage: React.FC = () => {
                   label={`Strategy: ${selectedExperiment?.strategy_name}`}
                   color="info"
                 />
+                {selectedExperiment?.seed != null && (
+                  <Chip
+                    label={`Seed: ${selectedExperiment.seed}`}
+                    color="secondary"
+                  />
+                )}
               </Stack>
+
+              {/* Frozen Configuration */}
+              {selectedExperiment?.frozen_config && (() => {
+                try {
+                  const frozen = JSON.parse(selectedExperiment.frozen_config);
+                  const cfg = frozen.config;
+                  return (
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
+                        Frozen Configuration (Immutable)
+                      </Typography>
+                      <Stack spacing={0.5}>
+                        <Typography variant="body2">
+                          Workload: {cfg?.workload?.name} (v{cfg?.workload?.version})
+                        </Typography>
+                        <Typography variant="body2">
+                          Platform: {cfg?.platform?.name} (v{cfg?.platform?.version})
+                        </Typography>
+                        <Typography variant="body2">
+                          Strategy: {cfg?.strategy?.name} (v{cfg?.strategy?.version})
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Frozen at: {frozen.created_at ? new Date(frozen.created_at).toLocaleString() : "N/A"}
+                        </Typography>
+                      </Stack>
+                    </Box>
+                  );
+                } catch {
+                  return null;
+                }
+              })()}
 
               <Divider />
 
