@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.wsgi import WSGIMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
 from sqlalchemy.orm import Session
@@ -222,6 +223,40 @@ try:
     cleanup_orphan_containers()
 except Exception as e:
     print(f"[WARN] Orphan container cleanup failed (Docker may not be available): {e}")
+
+# --- Prometheus metrics ---
+try:
+    from app.services.metrics.metrics_exporter import setup_metrics, get_metrics_app
+    from app.services.metrics.container_stats_collector import ContainerStatsCollector
+
+    setup_metrics()
+
+    # Refresh experiment metrics on each /metrics scrape
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+    from app.services.metrics.metrics_exporter import update_experiment_metrics
+
+    class MetricsRefreshMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            if request.url.path.startswith("/metrics"):
+                db = SessionLocal()
+                try:
+                    update_experiment_metrics(db)
+                finally:
+                    db.close()
+            return await call_next(request)
+
+    app.add_middleware(MetricsRefreshMiddleware)
+
+    # Mount /metrics as WSGI sub-app (prometheus_client speaks WSGI)
+    app.mount("/metrics", WSGIMiddleware(get_metrics_app()))
+
+    # Start background container stats collector
+    _stats_collector = ContainerStatsCollector()
+    _stats_collector.start()
+    print("[INFO] Prometheus metrics available at /metrics")
+except Exception as e:
+    print(f"[WARN] Metrics setup failed: {e}")
 
 
 @app.get("/")

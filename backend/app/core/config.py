@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     SIMULATION_TIMEOUT_SECONDS: int = 3600
     SIMULATION_DATA_PATH: str = "./storage/experiments"
 
+    # Monitoring
+    GRAFANA_URL: str = "http://localhost:3000"
+
     # CORS
     BACKEND_CORS_ORIGINS: list = [
         "http://localhost:3000",

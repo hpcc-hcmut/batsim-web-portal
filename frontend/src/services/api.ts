@@ -428,6 +428,13 @@ export const systemAPI = {
   getResources: (): Promise<
     AxiosResponse<{ cpu: number; memory: number; disk: number }>
   > => api.get("/system/resources"),
+  getConfig: (): Promise<
+    AxiosResponse<{
+      grafana_url: string;
+      max_concurrent_simulations: number;
+      simulation_timeout_seconds: number;
+    }>
+  > => api.get("/system/config"),
 };
 
 export default api;

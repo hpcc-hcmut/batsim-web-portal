@@ -16,8 +16,8 @@ import {
   Divider,
   Alert,
 } from "@mui/material";
-import { Science, PlayArrow, Stop, Refresh } from "@mui/icons-material";
-import { Experiment, experimentsAPI } from "../../services/api";
+import { Science, PlayArrow, Stop, Refresh, Dashboard } from "@mui/icons-material";
+import { Experiment, experimentsAPI, systemAPI } from "../../services/api";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -57,6 +57,7 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
   const [tabValue, setTabValue] = useState(0);
   const [liveLogs, setLiveLogs] = useState<{ batsim: string; pybatsim: string } | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     if (!experiment) return;
@@ -89,6 +90,13 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
       }
     }
   }, [open, experiment, tabValue, fetchLogs]);
+
+  // Fetch Grafana URL on mount
+  useEffect(() => {
+    systemAPI.getConfig().then((res) => {
+      setGrafanaUrl(res.data.grafana_url);
+    }).catch(() => {});
+  }, []);
 
   // Reset on close
   useEffect(() => {
@@ -208,7 +216,7 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
             )}
             <Divider />
             <Typography variant="h6">Actions</Typography>
-            <Box sx={{ display: "flex", gap: 2 }}>
+            <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
               {experiment.status === "pending" && (
                 <Button variant="contained" color="success" startIcon={<PlayArrow />}
                   onClick={() => { onStart(experiment.id); onClose(); }}>
@@ -219,6 +227,18 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
                 <Button variant="contained" color="error" startIcon={<Stop />}
                   onClick={() => { onStop(experiment.id); onClose(); }}>
                   {experiment.status === "queued" ? "Cancel" : "Stop"} Experiment
+                </Button>
+              )}
+              {grafanaUrl && (
+                <Button
+                  variant="outlined"
+                  color="info"
+                  startIcon={<Dashboard />}
+                  href={`${grafanaUrl}/d/batsim-experiment-overview?var-experiment_id=${experiment.id}&from=now-1h&to=now`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View Monitoring Dashboard
                 </Button>
               )}
             </Box>

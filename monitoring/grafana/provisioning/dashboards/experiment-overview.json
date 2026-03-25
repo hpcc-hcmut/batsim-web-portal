@@ -1,0 +1,281 @@
+{
+  "uid": "batsim-experiment-overview",
+  "title": "BatSim Experiment Overview",
+  "tags": ["batsim"],
+  "timezone": "browser",
+  "refresh": "5s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "experiment_id",
+        "type": "query",
+        "datasource": { "type": "prometheus" },
+        "query": "label_values(batsim_experiment_status, experiment_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "current": { "text": "All", "value": "$__all" },
+        "multi": true,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Experiment Status",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_experiment_status{experiment_id=~\"$experiment_id\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "Value": true, "__name__": true, "instance": true, "job": true, "environment": true },
+            "renameByName": {
+              "experiment_id": "ID",
+              "status": "Status"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": { "type": "color-text" }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "completed": { "text": "COMPLETED", "color": "green" } } },
+                  { "type": "value", "options": { "running": { "text": "RUNNING", "color": "orange" } } },
+                  { "type": "value", "options": { "failed": { "text": "FAILED", "color": "red" } } },
+                  { "type": "value", "options": { "queued": { "text": "QUEUED", "color": "blue" } } },
+                  { "type": "value", "options": { "pending": { "text": "PENDING", "color": "purple" } } }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "title": "Experiment Progress",
+      "type": "gauge",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_experiment_progress_percent{experiment_id=~\"$experiment_id\"}",
+          "legendFormat": "Exp {{experiment_id}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 100,
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 25 },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 75 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Active Experiments",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_active_experiments",
+          "legendFormat": "Running"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 2 },
+              { "color": "red", "value": 3 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Jobs Completed vs Total",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_experiment_jobs_total{experiment_id=~\"$experiment_id\"}",
+          "legendFormat": "Total (Exp {{experiment_id}})"
+        },
+        {
+          "expr": "batsim_experiment_jobs_completed{experiment_id=~\"$experiment_id\"}",
+          "legendFormat": "Completed (Exp {{experiment_id}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "pointSize": 5
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Queue by Status",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_queue_size",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "pieType": "donut"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Experiments Over Time",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 6 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_experiments_started_total",
+          "legendFormat": "Started"
+        },
+        {
+          "expr": "batsim_experiments_completed_total",
+          "legendFormat": "Completed"
+        },
+        {
+          "expr": "batsim_experiments_failed_total",
+          "legendFormat": "Failed"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null }
+            ]
+          }
+        }
+      },
+      "options": {
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Container CPU Usage (%)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_container_cpu_percent{experiment_id=~\"$experiment_id\"}",
+          "legendFormat": "Exp {{experiment_id}} - {{container_type}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "gradientMode": "scheme"
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Container Memory Usage",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "batsim_container_memory_bytes{experiment_id=~\"$experiment_id\"}",
+          "legendFormat": "Usage (Exp {{experiment_id}} - {{container_type}})"
+        },
+        {
+          "expr": "batsim_container_memory_limit_bytes{experiment_id=~\"$experiment_id\"}",
+          "legendFormat": "Limit (Exp {{experiment_id}} - {{container_type}})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Experiment Duration Distribution",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, rate(batsim_experiment_duration_seconds_bucket[$__rate_interval]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(batsim_experiment_duration_seconds_bucket[$__rate_interval]))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

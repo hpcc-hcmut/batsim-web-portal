@@ -17,6 +17,12 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.experiment import Experiment, ExperimentStatus
 from app.services.orchestrator.container_manager import ContainerManager
+from app.services.metrics.metrics_exporter import (
+    experiments_started_total,
+    experiments_completed_total,
+    experiments_failed_total,
+    experiment_duration_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +78,7 @@ def _run_experiment_thread(experiment_id: int):
         _update_experiment_status(
             db, experiment_id, ExperimentStatus.FAILED, error_message=str(e)
         )
+        experiments_failed_total.inc()
     finally:
         # Collect logs before cleanup (don't let log errors block cleanup)
         try:
@@ -98,6 +105,7 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
             db, experiment_id, ExperimentStatus.FAILED,
             error_message="Missing frozen config — cannot run simulation",
         )
+        experiments_failed_total.inc()
         return
 
     files = frozen["frozen_files"]
@@ -110,15 +118,17 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
             db, experiment_id, ExperimentStatus.FAILED,
             error_message="Missing workload, platform, or strategy file path",
         )
+        experiments_failed_total.inc()
         return
 
     # Ensure experiment directory exists for results output
     exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(experiment_id))
     os.makedirs(exp_dir, exist_ok=True)
 
-    # Record start time
+    # Record start time + increment started counter
     exp.start_time = datetime.now(timezone.utc)
     db.commit()
+    experiments_started_total.inc()
 
     # --- Container lifecycle ---
     try:
@@ -154,8 +164,14 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
     batsim_exit = result.get("batsim_exit", -1)
     pybatsim_exit = result.get("pybatsim_exit", -1)
 
+    # Record duration
+    if exp.start_time:
+        duration = (datetime.now(timezone.utc) - exp.start_time).total_seconds()
+        experiment_duration_seconds.labels(experiment_id=str(experiment_id)).observe(duration)
+
     if batsim_exit == 0:
         _update_experiment_status(db, experiment_id, ExperimentStatus.COMPLETED)
+        experiments_completed_total.inc()
         # Try to parse output for job count
         _parse_simulation_output(db, experiment_id, exp_dir)
     else:
@@ -165,6 +181,7 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
         _update_experiment_status(
             db, experiment_id, ExperimentStatus.FAILED, error_message=error_msg
         )
+        experiments_failed_total.inc()
 
 
 def _update_experiment_status(
