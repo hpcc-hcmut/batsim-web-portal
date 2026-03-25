@@ -106,6 +106,8 @@ export interface Experiment {
   simulation_dir?: string;
   batsim_logs?: string;
   pybatsim_logs?: string;
+  error_message?: string;
+  container_network?: string;
   created_by?: number;
   created_at: string;
   updated_at?: string;
@@ -370,8 +372,18 @@ export const experimentsAPI = {
       total_jobs: number;
       start_time: string;
       end_time: string;
+      error_message?: string;
     }>
   > => api.get(`/experiments/${id}/status`),
+  getLogs: (
+    id: number
+  ): Promise<
+    AxiosResponse<{
+      batsim_logs: string;
+      pybatsim_logs: string;
+      live: boolean;
+    }>
+  > => api.get(`/experiments/${id}/logs`),
 };
 
 // Results API

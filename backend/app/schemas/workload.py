@@ -26,8 +26,8 @@ class WorkloadInDB(WorkloadBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     nb_res: Optional[int] = None
-    jobs: Optional[list] = None
-    profiles: Optional[dict] = None
+    jobs: Optional[str] = None  # JSON string stored in DB
+    profiles: Optional[str] = None  # JSON string stored in DB
     version: int = 1
 
     class Config:

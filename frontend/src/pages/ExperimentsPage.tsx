@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -9,24 +9,11 @@ import {
   Button,
   Stack,
   Chip,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   Alert,
   Snackbar,
-  Tabs,
-  Tab,
-  Paper,
   LinearProgress,
-  Divider,
 } from "@mui/material";
-import { Science, PlayArrow, Stop, Add } from "@mui/icons-material";
+import { PlayArrow, Stop, Add } from "@mui/icons-material";
 import {
   experimentsAPI,
   Experiment,
@@ -35,27 +22,23 @@ import {
   Scenario,
   Strategy,
 } from "../services/api";
+import { ExperimentCreateDialog } from "../components/experiments/experiment-create-dialog";
+import { ExperimentDetailDialog } from "../components/experiments/experiment-detail-dialog";
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
+function getStatusColor(status: string) {
+  switch (status) {
+    case "completed": return "success" as const;
+    case "running": return "warning" as const;
+    case "failed": return "error" as const;
+    case "cancelled": return "default" as const;
+    case "queued": return "info" as const;
+    case "pending": return "secondary" as const;
+    default: return "default" as const;
+  }
 }
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`experiment-tabpanel-${index}`}
-      aria-labelledby={`experiment-tab-${index}`}
-      {...other}
-    >
-      {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
-    </div>
-  );
-}
+// Auto-refresh interval for running experiments (ms)
+const AUTO_REFRESH_INTERVAL = 5000;
 
 const ExperimentsPage: React.FC = () => {
   const [experiments, setExperiments] = useState<Experiment[]>([]);
@@ -65,47 +48,44 @@ const ExperimentsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedExperiment, setSelectedExperiment] =
-    useState<Experiment | null>(null);
-  const [tabValue, setTabValue] = useState(0);
+  const [selectedExperiment, setSelectedExperiment] = useState<Experiment | null>(null);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
     severity: "success" | "error";
-  }>({
-    open: false,
-    message: "",
-    severity: "success",
-  });
+  }>({ open: false, message: "", severity: "success" });
 
-  // Form state
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    scenario_id: "",
-    strategy_id: "",
-    seed: "",
-  });
-
-  useEffect(() => {
-    const fetchExperiments = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await experimentsAPI.getAll();
-        const data = Array.isArray(res.data)
-          ? res.data
-          : (res.data as any).items || [];
-        setExperiments(data);
-      } catch (err: any) {
-        setError("Failed to load experiments.");
-      } finally {
-        setLoading(false);
+  const fetchExperiments = useCallback(async () => {
+    try {
+      const res = await experimentsAPI.getAll();
+      const data = Array.isArray(res.data) ? res.data : (res.data as any).items || [];
+      setExperiments(data);
+      // Update selected experiment if detail dialog is open
+      if (selectedExperiment) {
+        const updated = data.find((e: Experiment) => e.id === selectedExperiment.id);
+        if (updated) setSelectedExperiment(updated);
       }
-    };
-    fetchExperiments();
+    } catch {
+      setError("Failed to load experiments.");
+    }
+  }, [selectedExperiment]);
+
+  // Initial load
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    fetchExperiments().finally(() => setLoading(false));
   }, []);
 
+  // Auto-refresh when any experiment is running/queued
+  useEffect(() => {
+    const hasActive = experiments.some((e) => e.status === "running" || e.status === "queued");
+    if (!hasActive) return;
+    const interval = setInterval(fetchExperiments, AUTO_REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [experiments, fetchExperiments]);
+
+  // Fetch scenarios and strategies for create dialog
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -115,207 +95,90 @@ const ExperimentsPage: React.FC = () => {
         ]);
         setScenarios(scenariosRes.data);
         setStrategies(strategiesRes.data);
-      } catch (err) {
-        console.error("Failed to fetch data:", err);
+      } catch {
+        console.error("Failed to fetch scenarios/strategies");
       }
     };
     fetchData();
   }, []);
 
-  const handleCreateExperiment = async () => {
+  const handleStart = async (id: number) => {
     try {
-      await experimentsAPI.create({
-        name: formData.name,
-        description: formData.description,
-        scenario_id: parseInt(formData.scenario_id),
-        strategy_id: parseInt(formData.strategy_id),
-        seed: formData.seed ? parseInt(formData.seed) : undefined,
-      });
-      setCreateDialogOpen(false);
-      setFormData({
-        name: "",
-        description: "",
-        scenario_id: "",
-        strategy_id: "",
-        seed: "",
-      });
-      setSnackbar({
-        open: true,
-        message: "Experiment created successfully!",
-        severity: "success",
-      });
-      // Refresh experiments list
-      const res = await experimentsAPI.getAll();
-      const data = Array.isArray(res.data)
-        ? res.data
-        : (res.data as any).items || [];
-      setExperiments(data);
+      await experimentsAPI.start(id);
+      setSnackbar({ open: true, message: "Experiment started!", severity: "success" });
+      fetchExperiments();
     } catch (err: any) {
       setSnackbar({
         open: true,
-        message: "Failed to create experiment",
+        message: err.response?.data?.detail || "Failed to start experiment.",
         severity: "error",
       });
     }
   };
 
-  const handleStartExperiment = async (experimentId: number) => {
+  const handleStop = async (id: number) => {
     try {
-      await experimentsAPI.start(experimentId);
-      setSnackbar({
-        open: true,
-        message: "Experiment started successfully!",
-        severity: "success",
-      });
-      // Refresh experiments list
-      const res = await experimentsAPI.getAll();
-      const data = Array.isArray(res.data)
-        ? res.data
-        : (res.data as any).items || [];
-      setExperiments(data);
+      await experimentsAPI.stop(id);
+      setSnackbar({ open: true, message: "Experiment stopped.", severity: "success" });
+      fetchExperiments();
     } catch (err: any) {
       setSnackbar({
         open: true,
-        message: "Failed to start experiment",
+        message: err.response?.data?.detail || "Failed to stop experiment.",
         severity: "error",
       });
     }
   };
 
-  const handleStopExperiment = async (experimentId: number) => {
-    try {
-      await experimentsAPI.stop(experimentId);
-      setSnackbar({
-        open: true,
-        message: "Experiment stopped successfully!",
-        severity: "success",
-      });
-      // Refresh experiments list
-      const res = await experimentsAPI.getAll();
-      const data = Array.isArray(res.data)
-        ? res.data
-        : (res.data as any).items || [];
-      setExperiments(data);
-    } catch (err: any) {
-      setSnackbar({
-        open: true,
-        message: "Failed to stop experiment",
-        severity: "error",
-      });
-    }
+  const handleSnackbar = (message: string, severity: "success" | "error") => {
+    setSnackbar({ open: true, message, severity });
   };
 
-  const handleExperimentClick = (experiment: Experiment) => {
-    setSelectedExperiment(experiment);
-    setDetailDialogOpen(true);
-    setTabValue(0);
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "pending":
-        return "default";
-      case "queued":
-        return "info";
-      case "running":
-        return "primary";
-      case "completed":
-        return "success";
-      case "failed":
-        return "error";
-      case "cancelled":
-        return "warning";
-      default:
-        return "default";
-    }
-  };
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
+        <CircularProgress />
+      </Box>
+    );
+  }
 
   return (
     <Box>
-      <Typography variant="h4" fontWeight={900} gutterBottom>
-        Experiments
-      </Typography>
-      <Box sx={{ mb: 3 }}>
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={() => setCreateDialogOpen(true)}
-          startIcon={<Add />}
-          sx={{ borderRadius: 1, fontWeight: 700 }}
-        >
-          Start New Experiment
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+        <Typography variant="h4" fontWeight={900}>Experiments</Typography>
+        <Button variant="contained" startIcon={<Add />} onClick={() => setCreateDialogOpen(true)}>
+          New Experiment
         </Button>
-      </Box>
-      {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>
-          <CircularProgress color="primary" />
-        </Box>
-      ) : error ? (
-        <Typography color="error" sx={{ mt: 4 }}>
-          {error}
-        </Typography>
-      ) : experiments.length === 0 ? (
-        <Typography color="text.secondary" sx={{ mt: 4 }}>
-          No experiments found.
-        </Typography>
+      </Stack>
+
+      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {experiments.length === 0 ? (
+        <Typography color="text.secondary">No experiments yet. Create one to get started.</Typography>
       ) : (
         <Grid container spacing={3}>
           {experiments.map((e) => (
-            <Grid item xs={12} sm={6} md={4} key={e.id}>
+            <Grid key={e.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <Card
-                sx={{
-                  borderRadius: 1,
-                  background: "rgba(26,32,44,0.98)",
-                  height: "100%",
-                  cursor: "pointer",
-                  transition: "transform 0.2s, box-shadow 0.2s",
-                  "&:hover": {
-                    transform: "translateY(-2px)",
-                    boxShadow: "0 8px 25px rgba(0,0,0,0.3)",
-                  },
-                }}
-                onClick={() => handleExperimentClick(e)}
+                sx={{ cursor: "pointer", "&:hover": { boxShadow: 6 }, height: "100%" }}
+                onClick={() => { setSelectedExperiment(e); setDetailDialogOpen(true); }}
               >
                 <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2} mb={2}>
-                    <Science sx={{ fontSize: 36, color: "#4a9eff" }} />
-                    <Box>
-                      <Typography
-                        variant="h6"
-                        fontWeight={900}
-                        sx={{ color: "#fff" }}
-                      >
-                        {e.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Status: {e.status}
-                      </Typography>
-                    </Box>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant="h6" fontWeight={700} noWrap sx={{ maxWidth: "70%" }}>
+                      {e.name}
+                    </Typography>
+                    <Chip label={e.status} color={getStatusColor(e.status)} size="small" />
                   </Stack>
-                  <Typography
-                    variant="body2"
-                    sx={{ mb: 2 }}
-                    color="text.secondary"
-                  >
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {e.description || "No description provided."}
                   </Typography>
-                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-                    <Chip
-                      label={e.created_at?.split("T")[0]}
-                      size="small"
-                      color="default"
-                    />
-                    <Chip
-                      label={e.scenario_name || "Scenario"}
-                      size="small"
-                      color="secondary"
-                    />
-                    <Chip
-                      label={e.strategy_name || "Strategy"}
-                      size="small"
-                      color="secondary"
-                    />
+                  <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" gap={0.5}>
+                    <Chip label={e.created_at?.split("T")[0]} size="small" />
+                    <Chip label={e.scenario_name || "Scenario"} size="small" color="secondary" />
+                    <Chip label={e.strategy_name || "Strategy"} size="small" color="secondary" />
                   </Stack>
+
                   {e.status === "running" && (
                     <Box sx={{ mb: 2 }}>
                       <LinearProgress
@@ -323,41 +186,27 @@ const ExperimentsPage: React.FC = () => {
                         value={e.progress_percentage || 0}
                         sx={{ height: 6, borderRadius: 3 }}
                       />
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ mt: 0.5, display: "block" }}
-                      >
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
                         {e.progress_percentage || 0}% Complete
                       </Typography>
                     </Box>
                   )}
+
+                  {e.status === "failed" && e.error_message && (
+                    <Typography variant="caption" color="error" sx={{ mb: 1, display: "block" }}>
+                      Error: {e.error_message.substring(0, 80)}...
+                    </Typography>
+                  )}
+
                   {e.status === "pending" && (
-                    <Button
-                      variant="contained"
-                      color="success"
-                      size="small"
-                      startIcon={<PlayArrow />}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleStartExperiment(e.id);
-                      }}
-                      sx={{ mr: 1 }}
-                    >
+                    <Button variant="contained" color="success" size="small" startIcon={<PlayArrow />}
+                      onClick={(event) => { event.stopPropagation(); handleStart(e.id); }} sx={{ mr: 1 }}>
                       Start
                     </Button>
                   )}
                   {(e.status === "running" || e.status === "queued") && (
-                    <Button
-                      variant="contained"
-                      color="error"
-                      size="small"
-                      startIcon={<Stop />}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleStopExperiment(e.id);
-                      }}
-                    >
+                    <Button variant="contained" color="error" size="small" startIcon={<Stop />}
+                      onClick={(event) => { event.stopPropagation(); handleStop(e.id); }}>
                       {e.status === "queued" ? "Cancel" : "Stop"}
                     </Button>
                   )}
@@ -368,333 +217,23 @@ const ExperimentsPage: React.FC = () => {
         </Grid>
       )}
 
-      {/* Create Experiment Dialog */}
-      <Dialog
+      <ExperimentCreateDialog
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Create New Experiment</DialogTitle>
-        <DialogContent>
-          <Stack spacing={3} sx={{ mt: 1 }}>
-            <TextField
-              label="Experiment Name"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              fullWidth
-              required
-            />
-            <TextField
-              label="Description"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              fullWidth
-              multiline
-              rows={3}
-            />
-            <FormControl fullWidth required>
-              <InputLabel>Scenario</InputLabel>
-              <Select
-                value={formData.scenario_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, scenario_id: e.target.value })
-                }
-                label="Scenario"
-              >
-                {scenarios.map((scenario) => (
-                  <MenuItem key={scenario.id} value={scenario.id}>
-                    {scenario.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth required>
-              <InputLabel>Strategy</InputLabel>
-              <Select
-                value={formData.strategy_id}
-                onChange={(e) =>
-                  setFormData({ ...formData, strategy_id: e.target.value })
-                }
-                label="Strategy"
-              >
-                {strategies.map((strategy) => (
-                  <MenuItem key={strategy.id} value={strategy.id}>
-                    {strategy.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-            <TextField
-              label="Seed (optional)"
-              type="number"
-              value={formData.seed}
-              onChange={(e) =>
-                setFormData({ ...formData, seed: e.target.value })
-              }
-              helperText="Random seed for reproducibility. Leave empty for auto-generated."
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-          <Button
-            onClick={handleCreateExperiment}
-            variant="contained"
-            disabled={
-              !formData.name || !formData.scenario_id || !formData.strategy_id
-            }
-          >
-            Create
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onCreated={fetchExperiments}
+        scenarios={scenarios}
+        strategies={strategies}
+        onSnackbar={handleSnackbar}
+      />
 
-      {/* Experiment Detail Dialog */}
-      <Dialog
+      <ExperimentDetailDialog
         open={detailDialogOpen}
+        experiment={selectedExperiment}
         onClose={() => setDetailDialogOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{ sx: { height: "80vh" } }}
-      >
-        <DialogTitle>
-          <Stack direction="row" alignItems="center" spacing={2}>
-            <Science sx={{ fontSize: 32, color: "#4a9eff" }} />
-            <Box>
-              <Typography variant="h5" fontWeight={900}>
-                {selectedExperiment?.name}
-              </Typography>
-              <Chip
-                label={selectedExperiment?.status}
-                color={getStatusColor(selectedExperiment?.status || "")}
-                size="small"
-              />
-            </Box>
-          </Stack>
-        </DialogTitle>
-        <DialogContent sx={{ p: 0 }}>
-          <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
-            <Tabs
-              value={tabValue}
-              onChange={(_, newValue) => setTabValue(newValue)}
-            >
-              <Tab label="Overview" />
-              <Tab label="Execution" />
-              <Tab label="Logs" />
-            </Tabs>
-          </Box>
+        onStart={handleStart}
+        onStop={handleStop}
+      />
 
-          <TabPanel value={tabValue} index={0}>
-            <Stack spacing={3}>
-              <Typography variant="h6">Experiment Details</Typography>
-              <Typography variant="body2" color="text.secondary">
-                {selectedExperiment?.description || "No description provided."}
-              </Typography>
-
-              <Divider />
-
-              <Typography variant="h6">Components</Typography>
-              <Stack direction="row" spacing={2} flexWrap="wrap" gap={1}>
-                <Chip
-                  label={`Scenario: ${selectedExperiment?.scenario_name}`}
-                  color="primary"
-                />
-                <Chip
-                  label={`Strategy: ${selectedExperiment?.strategy_name}`}
-                  color="info"
-                />
-                {selectedExperiment?.seed != null && (
-                  <Chip
-                    label={`Seed: ${selectedExperiment.seed}`}
-                    color="secondary"
-                  />
-                )}
-              </Stack>
-
-              {/* Frozen Configuration */}
-              {selectedExperiment?.frozen_config && (() => {
-                try {
-                  const frozen = JSON.parse(selectedExperiment.frozen_config);
-                  const cfg = frozen.config;
-                  return (
-                    <Box>
-                      <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
-                        Frozen Configuration (Immutable)
-                      </Typography>
-                      <Stack spacing={0.5}>
-                        <Typography variant="body2">
-                          Workload: {cfg?.workload?.name} (v{cfg?.workload?.version})
-                        </Typography>
-                        <Typography variant="body2">
-                          Platform: {cfg?.platform?.name} (v{cfg?.platform?.version})
-                        </Typography>
-                        <Typography variant="body2">
-                          Strategy: {cfg?.strategy?.name} (v{cfg?.strategy?.version})
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Frozen at: {frozen.created_at ? new Date(frozen.created_at).toLocaleString() : "N/A"}
-                        </Typography>
-                      </Stack>
-                    </Box>
-                  );
-                } catch {
-                  return null;
-                }
-              })()}
-
-              <Divider />
-
-              <Typography variant="h6">Timing</Typography>
-              <Stack spacing={1}>
-                <Typography variant="body2">
-                  Created:{" "}
-                  {selectedExperiment?.created_at
-                    ? new Date(selectedExperiment.created_at).toLocaleString()
-                    : "N/A"}
-                </Typography>
-                {selectedExperiment?.start_time && (
-                  <Typography variant="body2">
-                    Started:{" "}
-                    {new Date(selectedExperiment.start_time).toLocaleString()}
-                  </Typography>
-                )}
-                {selectedExperiment?.end_time && (
-                  <Typography variant="body2">
-                    Ended:{" "}
-                    {new Date(selectedExperiment.end_time).toLocaleString()}
-                  </Typography>
-                )}
-              </Stack>
-            </Stack>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={1}>
-            <Stack spacing={3}>
-              <Typography variant="h6">Execution Status</Typography>
-
-              {selectedExperiment?.status === "running" && (
-                <Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={selectedExperiment.progress_percentage || 0}
-                    sx={{ height: 8, borderRadius: 4, mb: 1 }}
-                  />
-                  <Typography variant="body2" color="text.secondary">
-                    Progress: {selectedExperiment.progress_percentage || 0}%
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Jobs: {selectedExperiment.completed_jobs || 0} /{" "}
-                    {selectedExperiment.total_jobs || 0}
-                  </Typography>
-                </Box>
-              )}
-
-              <Divider />
-
-              <Typography variant="h6">Actions</Typography>
-              <Box sx={{ display: "flex", gap: 2 }}>
-                {selectedExperiment?.status === "pending" && (
-                  <Button
-                    variant="contained"
-                    color="success"
-                    startIcon={<PlayArrow />}
-                    onClick={() => {
-                      handleStartExperiment(selectedExperiment.id);
-                      setDetailDialogOpen(false);
-                    }}
-                  >
-                    Start Experiment
-                  </Button>
-                )}
-                {selectedExperiment?.status === "running" && (
-                  <Button
-                    variant="contained"
-                    color="error"
-                    startIcon={<Stop />}
-                    onClick={() => {
-                      handleStopExperiment(selectedExperiment.id);
-                      setDetailDialogOpen(false);
-                    }}
-                  >
-                    Stop Experiment
-                  </Button>
-                )}
-              </Box>
-            </Stack>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={2}>
-            <Stack spacing={3}>
-              <Typography variant="h6">Execution Logs</Typography>
-
-              {selectedExperiment?.batsim_logs && (
-                <Box>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    Batsim Logs
-                  </Typography>
-                  <Paper
-                    sx={{
-                      p: 2,
-                      bgcolor: "grey.900",
-                      maxHeight: 200,
-                      overflow: "auto",
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      component="pre"
-                      sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
-                    >
-                      {selectedExperiment.batsim_logs}
-                    </Typography>
-                  </Paper>
-                </Box>
-              )}
-
-              {selectedExperiment?.pybatsim_logs && (
-                <Box>
-                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    Pybatsim Logs
-                  </Typography>
-                  <Paper
-                    sx={{
-                      p: 2,
-                      bgcolor: "grey.900",
-                      maxHeight: 200,
-                      overflow: "auto",
-                    }}
-                  >
-                    <Typography
-                      variant="body2"
-                      component="pre"
-                      sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
-                    >
-                      {selectedExperiment.pybatsim_logs}
-                    </Typography>
-                  </Paper>
-                </Box>
-              )}
-
-              {!selectedExperiment?.batsim_logs &&
-                !selectedExperiment?.pybatsim_logs && (
-                  <Typography color="text.secondary">
-                    No logs available yet.
-                  </Typography>
-                )}
-            </Stack>
-          </TabPanel>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDetailDialogOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Snackbar for feedback */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}

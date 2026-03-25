@@ -86,12 +86,14 @@ batsim-web-portal/
 
 **Total API Endpoints:** ~43
 
-### Services (Phase 2)
+### Services (Phase 2-3)
 
 | Service | Purpose |
 |---------|---------|
 | `experiment_bundle_service.py` | Freezes config and copies artifact files on experiment creation |
 | `experiment_queue_service.py` | State machine for experiment lifecycle (PENDING→QUEUED→RUNNING) |
+| `orchestrator/container_manager.py` | Docker container lifecycle management (Phase 3) |
+| `orchestrator/orchestrator_service.py` | Background thread orchestration of experiments (Phase 3) |
 | `file_utils.py` | File operations utilities |
 | `validators/workload_validator.py` | JSON schema validation for workloads |
 | `validators/platform_validator.py` | XML schema validation for platforms |
@@ -128,13 +130,16 @@ batsim-web-portal/
 - Version display in API responses
 - List and retrieve scenarios
 
-#### Experiment Lifecycle (Phase 2 - Complete)
+#### Experiment Lifecycle (Phase 2-3 - Complete)
 - Create experiments with frozen config
 - Enqueue experiments (PENDING→QUEUED)
-- Manage state transitions (QUEUED→RUNNING)
+- Manage state transitions (QUEUED→RUNNING→COMPLETED/FAILED)
 - Cancel experiments
 - Track status and progress
 - Queue management with concurrency control
+- Docker container orchestration (Phase 3)
+- Live log streaming from containers (Phase 3)
+- Orphan container cleanup on startup (Phase 3)
 
 #### Results Management (Complete)
 - Store simulation results
@@ -206,9 +211,9 @@ batsim-web-portal/
 - QUEUED badge for experiments (Phase 2)
 - Frozen config display in experiment details
 
-## Phase 2 Additions (Scenario Builder & Experiment Lifecycle)
+## Phase 2-3 Additions (Scenario Builder & Container Orchestration)
 
-### Backend Changes
+### Phase 2 Backend Changes
 
 **New Models:**
 - `frozen_config` column on Experiment table (TEXT)
@@ -220,22 +225,49 @@ batsim-web-portal/
 - `experiment_bundle_service.py` — Config freezing and file copying
 - `experiment_queue_service.py` — State machine and concurrency management
 
+### Phase 3 Backend Changes
+
+**New Models:**
+- `error_message` column on Experiment table (TEXT)
+- `container_network` column on Experiment table (STRING)
+
+**New Services:**
+- `orchestrator/container_manager.py` — Docker container lifecycle
+- `orchestrator/orchestrator_service.py` — Background orchestration thread
+
 **Updated APIs:**
-- Experiments API: new endpoints for queue status and state transitions
-- Scenarios API: enriched responses with version numbers
+- Experiments API: new `{id}/logs` endpoint for live log streaming
+- Experiments API: stop endpoint now handles RUNNING→CANCELLED
+- Experiments API: status endpoint includes error_message field
 
-**Migration:**
-- Lightweight SQLite ALTER TABLE migrations in `main.py`
+**Updated Main App:**
+- OrchestratorService background thread initialization
+- Orphan container cleanup on startup
 
-### Frontend Changes
+**Updated Sample Strategies:**
+- `filler.py` — Rewritten for PyBatsim container compatibility
+- `fcfs_scheduler.py` — Rewritten for PyBatsim container compatibility
+
+**Dependencies:**
+- Docker SDK for Python 7.1.0
+
+### Phase 2-3 Frontend Changes
 
 **Updated Types:**
-- Experiment schema includes QUEUED status, seed, params, frozen_config
+- Experiment schema includes QUEUED/RUNNING status, error_message
+- API types for container-related fields
 
 **Updated Pages:**
-- ExperimentsPage: QUEUED badge, seed input in create dialog
-- ExperimentsPage: frozen config display in detail view
-- ScenariosPage: workload/platform version display
+- ExperimentsPage: QUEUED/RUNNING badges, modularized components
+- ExperimentsPage: error message display on failure
+- ExperimentsPage: live logs tab with container output
+
+**New Components:**
+- `experiment-create-dialog.tsx` — Create/enqueue dialog
+- `experiment-detail-dialog.tsx` — Detail view with live logs
+
+**Updated Services:**
+- `api.ts`: new `getLogs()` endpoint for live streaming
 
 ## Testing
 
@@ -358,14 +390,19 @@ npm run dev
 
 ## Known Limitations
 
-- Phase 3 (container orchestration) not yet implemented
-- WebSocket real-time monitoring planned for Phase 4
+- Phase 4 (WebSocket real-time monitoring) not yet implemented
 - Advanced analytics dashboard planned for Phase 5
 - Single-machine deployment (no clustering)
+- Container logs stored locally (no centralized logging yet)
 
-## Next Steps
+## Completed & Next Steps
 
-1. **Phase 3:** Container orchestration with Docker SDK
-2. **Phase 4:** Real-time monitoring and WebSocket updates
-3. **Phase 5:** Advanced analytics and comparative analysis
-4. **Phase 6:** Performance optimization and scaling
+**Completed:**
+- Phase 1: Core CRUD operations ✅
+- Phase 2: Scenario builder & experiment lifecycle ✅
+- Phase 3: Container orchestration with Docker SDK ✅
+
+**Upcoming:**
+1. **Phase 4:** Real-time monitoring and WebSocket updates
+2. **Phase 5:** Advanced analytics and comparative analysis
+3. **Phase 6:** Performance optimization and scaling

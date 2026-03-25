@@ -48,6 +48,8 @@ class Experiment(Base):
     simulation_dir = Column(String)  # Directory where simulation files are stored
     batsim_logs = Column(Text)  # Batsim execution logs
     pybatsim_logs = Column(Text)  # Pybatsim execution logs
+    error_message = Column(Text)  # Error details on failure
+    container_network = Column(String)  # Docker network name for this experiment
 
     created_by = Column(Integer, ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

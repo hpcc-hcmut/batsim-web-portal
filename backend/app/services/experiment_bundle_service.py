@@ -62,8 +62,23 @@ def freeze_experiment_config(
         real_src = os.path.realpath(src)
         if not real_src.startswith(storage_root + os.sep) and real_src != storage_root:
             raise ValueError(f"{artifact_type} file path is outside storage directory")
+        # Use clean filename: {type}.{ext} for workload/platform,
+        # but for strategy use original upload filename so PyBatsim CLI
+        # can discover the class by CamelCasing the module name.
         ext = os.path.splitext(src)[1]
-        dst = os.path.join(exp_dir, f"{artifact_type}{ext}")
+        if artifact_type == "strategy":
+            # Extract original filename from storage name format: "{name}_{original}"
+            stored_name = os.path.basename(src)
+            # Find the original filename after the first underscore
+            parts = stored_name.split("_", 1)
+            dst_name = parts[1] if len(parts) > 1 else stored_name
+        else:
+            dst_name = f"{artifact_type}{ext}"
+        dst = os.path.join(exp_dir, dst_name)
+        # Validate destination is within experiment directory (prevent path traversal)
+        real_dst = os.path.realpath(dst)
+        if not real_dst.startswith(os.path.realpath(exp_dir) + os.sep):
+            raise ValueError(f"{artifact_type} destination escapes experiment directory")
         shutil.copy2(src, dst)
         frozen_files[f"{artifact_type}_path"] = dst
 

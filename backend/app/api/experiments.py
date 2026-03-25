@@ -1,9 +1,12 @@
+"""Experiment API endpoints — CRUD, lifecycle, and simulation orchestration."""
+
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 import json
 import os
 import shutil
+
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.user import User
@@ -24,6 +27,10 @@ from app.services.experiment_queue_service import (
     get_queue_status,
     process_queue,
     InvalidTransitionError,
+)
+from app.services.orchestrator.orchestrator_service import (
+    run_experiment,
+    stop_experiment_containers,
 )
 
 router = APIRouter()
@@ -89,7 +96,6 @@ def create_experiment(
     if not scenario or not strategy:
         raise HTTPException(status_code=400, detail="Invalid scenario or strategy")
 
-    # Create experiment record first (need ID for bundle dir)
     seed = experiment_create.seed
     params = experiment_create.params
     exp = Experiment(
@@ -118,11 +124,10 @@ def create_experiment(
             params=params,
         )
         exp.frozen_config = json.dumps(frozen)
-        exp.simulation_dir = frozen["frozen_files"].get("workload_path", "").rsplit("/", 1)[0]
+        exp.simulation_dir = os.path.dirname(frozen["frozen_files"].get("workload_path", ""))
         db.commit()
         db.refresh(exp)
     except ValueError as e:
-        # Cleanup DB record and any partially-copied files
         exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(exp.id))
         if os.path.exists(exp_dir):
             shutil.rmtree(exp_dir, ignore_errors=True)
@@ -163,6 +168,9 @@ def delete_experiment(
         raise HTTPException(status_code=404, detail="Experiment not found")
     if exp.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Stop containers if running
+    if exp.status == ExperimentStatus.RUNNING:
+        stop_experiment_containers(experiment_id)
     # Cleanup frozen files on disk
     exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(exp.id))
     if os.path.exists(exp_dir):
@@ -178,19 +186,26 @@ def start_experiment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Enqueue experiment for execution (PENDING → QUEUED).
+    """Enqueue experiment and start execution if slot available.
 
-    The queue service will promote QUEUED → RUNNING when a slot is available.
-    Actual container orchestration happens in Phase 3.
+    PENDING → QUEUED → RUNNING (if slot available, triggers Docker containers).
     """
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
     try:
         exp = enqueue_experiment(db, experiment_id)
-        # Try to promote queued experiments immediately
         promoted = process_queue(db)
+
+        # If this experiment was promoted to RUNNING, launch containers
+        if experiment_id in promoted:
+            run_experiment(experiment_id)
+
         return {
-            "message": f"Experiment queued (position in queue)",
-            "status": exp.status.value,
-            "promoted": promoted,
+            "message": "Experiment started" if experiment_id in promoted else "Experiment queued",
+            "status": exp.status.value if experiment_id not in promoted else "running",
             "queue": get_queue_status(db),
         }
     except ValueError as e:
@@ -205,15 +220,28 @@ def stop_experiment(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Cancel an experiment (from QUEUED or RUNNING)."""
+    """Cancel/stop an experiment (from QUEUED or RUNNING)."""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if not exp:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # If running, stop containers first
+    if exp.status == ExperimentStatus.RUNNING:
+        stop_experiment_containers(experiment_id)
+
     try:
         exp = cancel_experiment(db, experiment_id)
-        # Process queue — may promote next queued experiment
         promoted = process_queue(db)
+
+        # Launch newly promoted experiments
+        for pid in promoted:
+            run_experiment(pid)
+
         return {
             "message": "Experiment cancelled",
             "status": exp.status.value,
-            "promoted": promoted,
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -231,6 +259,8 @@ def get_experiment_status(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
 
     frozen = None
     if exp.frozen_config:
@@ -248,4 +278,42 @@ def get_experiment_status(
         "end_time": exp.end_time,
         "seed": exp.seed,
         "frozen_config": frozen,
+        "error_message": exp.error_message,
+    }
+
+
+@router.get("/{experiment_id}/logs")
+def get_experiment_logs(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get experiment logs (from DB or live from containers)."""
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # If running, try to get live logs from containers
+    if exp.status == ExperimentStatus.RUNNING:
+        from app.services.orchestrator.orchestrator_service import _running_managers, _lock
+        with _lock:
+            manager = _running_managers.get(experiment_id)
+        if manager:
+            try:
+                live_logs = manager.get_logs(tail=200)
+                return {
+                    "batsim_logs": live_logs.get("batsim_logs", ""),
+                    "pybatsim_logs": live_logs.get("pybatsim_logs", ""),
+                    "live": True,
+                }
+            except Exception:
+                pass
+
+    # Fall back to stored logs
+    return {
+        "batsim_logs": exp.batsim_logs or "",
+        "pybatsim_logs": exp.pybatsim_logs or "",
+        "live": False,
     }

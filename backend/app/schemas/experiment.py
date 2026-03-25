@@ -41,6 +41,8 @@ class ExperimentInDB(ExperimentBase):
     simulation_dir: Optional[str] = None
     batsim_logs: Optional[str] = None
     pybatsim_logs: Optional[str] = None
+    error_message: Optional[str] = None
+    container_network: Optional[str] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

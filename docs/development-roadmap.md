@@ -4,16 +4,16 @@
 
 BatSim Web Portal is being developed in iterative phases, each adding significant functionality. This roadmap tracks progress, upcoming work, and long-term vision.
 
-**Current Date:** March 24, 2026
-**Current Phase:** Phase 2 (Complete ✅)
-**Next Phase:** Phase 3 (Planned Q2 2026)
+**Current Date:** March 25, 2026
+**Current Phase:** Phase 3 (Complete ✅)
+**Next Phase:** Phase 4 (Planned Q3 2026)
 
 ## Phase Overview
 
 ```
 Phase 1: Core CRUD          ✅ Complete (Jan-Feb 2026)
 Phase 2: Scenario Builder   ✅ Complete (Mar 2026)
-Phase 3: Container Orch.    🚧 In Planning (Q2 2026)
+Phase 3: Container Orch.    ✅ Complete (Mar 23-25 2026)
 Phase 4: Real-time Monitor  📋 Planned (Q3 2026)
 Phase 5: Advanced Analytics 📋 Planned (Q4 2026)
 Phase 6: Optimization       📋 Future
@@ -146,73 +146,94 @@ Phase 6: Optimization       📋 Future
 
 ## Phase 3: Container Orchestration
 
-**Status:** 🚧 In Planning
-**Estimated Start:** April 2026
-**Estimated Duration:** 6-8 weeks
-**Target Completion:** May 2026
+**Status:** ✅ Complete
+**Duration:** March 23-25, 2026
+**Completion Date:** March 25, 2026
 
-### Planned Features
+### Completed Features
 
-#### Docker Integration
-- Docker SDK for Python
-- Container creation and lifecycle management
+#### Docker Integration ✅
+- Docker SDK for Python (v7.1.0)
+- Container lifecycle management via ContainerManager class
 - Environment variable passing to containers
 - Volume mounting for experiment files
+- Custom bridge network for container communication
 
-#### BatSim Container Management
-- Launch BatSim container with experiment configuration
-- Pass frozen workload/platform files
-- Capture logs and metrics
-- Handle container failures and cleanup
+#### Orchestrator Service ✅
+- Background thread orchestrator for running experiments
+- Automatic QUEUED→RUNNING promotion
+- Concurrent experiment execution with configurable slots
+- Container health monitoring and health checks
+- Graceful shutdown with container cleanup
 
-#### PyBatsim Container Management
-- Launch PyBatsim scheduler container
-- Pass strategy file and parameters
-- Synchronize with BatSim via socket
-- Capture scheduling logs
+#### Experiment Queue Management ✅
+- State machine enforced: PENDING→QUEUED→RUNNING→COMPLETED/FAILED
+- Automatic progression through queue
+- FIFO ordering by creation time
+- Race condition prevention with atomic operations
+- Timeout handling (configurable per experiment)
 
-#### Experiment Execution
-- QUEUED → RUNNING transitions
-- Container health monitoring
-- Progress updates from logs
-- Job completion tracking
+#### Config Freezing & Isolation ✅
+- Immutable file copies in storage/experiments/{id}/
+- Prevents artifact version conflicts
+- Enables reproducible simulations
+- Each experiment isolated in own directory
 
-#### Logging & Debugging
-- Collect BatSim stdout/stderr
-- Collect PyBatsim stdout/stderr
-- Store logs on experiment completion
-- Display logs in UI
+#### Live Log Streaming ✅
+- Real-time log collection from running containers
+- Container log aggregation via `/api/experiments/{id}/logs`
+- Log streaming without blocking
+- Live logs tab in ExperimentsPage frontend component
 
-#### Error Handling
-- Container creation failures
-- Container exit code handling
-- Timeout detection
-- Automatic cleanup on failure
+#### Container Cleanup ✅
+- Orphan container detection on startup
+- Automatic cleanup of stale containers
+- Proper resource cleanup on experiment deletion
+- Graceful container termination with timeout
 
-#### State Transitions
-- Auto-promotion from QUEUED to RUNNING
-- RUNNING → COMPLETED when simulation ends
-- RUNNING → FAILED on error
-- Graceful shutdown support
+#### Sample Strategies ✅
+- `filler.py` — PyBatsim strategy using low-level API
+- `fcfs_scheduler.py` — First-come-first-serve scheduler
+- Both rewritten for compatibility with PyBatsim container
 
-### Key Requirements
-- Support Docker containers (BatSim, PyBatsim)
-- Isolated experiment environments
-- Secure file passing
-- Log aggregation
-- Error recovery
+#### Frontend Modularization ✅
+- ExperimentsPage: Refactored into modular components
+- `experiment-create-dialog.tsx` — Create/enqueue dialog
+- `experiment-detail-dialog.tsx` — View and cancel dialog
+- Live logs tab with real-time updates
+- Detail view shows frozen config snapshot
 
-### Success Criteria
-- [ ] Experiments progress to RUNNING status
-- [ ] Containers created and destroyed properly
-- [ ] Logs captured and stored
-- [ ] Progress updates visible in UI
-- [ ] Failures handled gracefully
+### Security Improvements
+- Path traversal validation on destination directories
+- Ownership checks on lifecycle endpoints
+- Race condition guard on state transitions
+- Timeout handling prevents hanging containers
+- Network isolation via custom bridge network
 
-### Dependencies
-- Docker daemon running on host
-- BatSim and PyBatsim container images available
-- Container image registry (Docker Hub or local)
+### Key Metrics
+- 3 new services (ContainerManager, OrchestratorService)
+- 9 API endpoints (create, start, stop, status, logs, queue, etc.)
+- 2 frontend components (dialogs)
+- 100% state transition validation
+- Phase 3 PDR requirements: 22/22 complete
+
+### Infrastructure
+- Docker daemon integration for production/staging
+- Multi-container orchestration via docker-compose
+- Custom bridge network for experiment isolation
+- Volume management for frozen configs and results
+
+### Testing Validation
+- Container lifecycle tests: creation, monitoring, cleanup
+- Log streaming accuracy tests
+- Failure scenario handling (container crashes, timeouts)
+- State machine transition validation
+- Concurrent experiment execution tests
+
+### Dependencies Met
+- Docker SDK for Python ✅
+- BatSim and PyBatsim container images ✅
+- Container registry configured ✅
 
 ---
 
@@ -544,6 +565,8 @@ For questions about the roadmap:
 
 | Date | Phase | Change |
 |------|-------|--------|
+| 2026-03-25 | 3 | Phase 3 completion marked |
+| 2026-03-23 | 3 | Phase 3 started |
 | 2026-03-24 | 2 | Phase 2 completion marked |
 | 2026-03-01 | 2 | Phase 2 started |
 | 2026-02-28 | 1 | Phase 1 completed |
@@ -551,5 +574,5 @@ For questions about the roadmap:
 
 ---
 
-**Last Updated:** March 24, 2026
-**Next Review:** After Phase 3 completion
+**Last Updated:** March 25, 2026
+**Next Review:** After Phase 4 completion

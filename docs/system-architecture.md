@@ -2,7 +2,7 @@
 
 ## Overview
 
-BatSim Web Portal is a modern web application for managing and executing BatSim simulations. It follows a client-server architecture with a React/TypeScript frontend and FastAPI backend, using SQLite for data persistence.
+BatSim Web Portal is a modern web application for managing and executing BatSim simulations. It follows a client-server architecture with a React/TypeScript frontend and FastAPI backend, using SQLite for data persistence and Docker containers for isolated experiment execution.
 
 ## High-Level Architecture
 
@@ -20,19 +20,30 @@ BatSim Web Portal is a modern web application for managing and executing BatSim 
 ┌────────────────────────────▼────────────────────────────────────┐
 │                  Backend (FastAPI)                              │
 │ ┌──────────────────────────────────────────────────────────────┤
-│ │ API Routes (Auth, Workloads, Platforms, Scenarios, etc.)    │
+│ │ API Routes (Auth, Workloads, Platforms, Experiments, etc.)  │
 │ ├──────────────────────────────────────────────────────────────┤
-│ │ Services (Experiment Bundle, Queue, File Utils, Validators) │
+│ │ Services: Bundle, Queue, Orchestrator, Container Manager    │
+│ │ File Utils, Validators, Live Log Streaming                  │
 │ ├──────────────────────────────────────────────────────────────┤
 │ │ Models (SQLAlchemy) & Schemas (Pydantic)                    │
+│ ├──────────────────────────────────────────────────────────────┤
+│ │ Background Orchestrator Thread (Experiment Lifecycle)        │
 │ └──────────────────────────────────────────────────────────────┘
 └────────────────────────────┬────────────────────────────────────┘
                              │
-┌────────────────────────────▼────────────────────────────────────┐
-│             SQLite Database + File Storage                      │
-│ ├─ Database: experiments.db                                     │
-│ └─ Storage: /storage/workloads/, /platforms/, /strategies/      │
-└─────────────────────────────────────────────────────────────────┘
+                ┌────────────┴────────────┐
+                │                         │
+┌───────────────▼─────────────┐  ┌────────▼──────────────────────┐
+│ SQLite Database + Storage   │  │ Docker Daemon (Container Mgmt) │
+│ ├─ Database: experiments.db │  │ ├─ Custom bridge network      │
+│ └─ Storage: /storage/...    │  │ ├─ BatSim containers         │
+│   ├─ workloads/             │  │ ├─ PyBatsim containers       │
+│   ├─ platforms/             │  │ └─ Volume mounts             │
+│   ├─ strategies/            │  └────────────────────────────────┘
+│   ├─ experiments/           │
+│   │  └─ {id}/config.json    │
+│   └─ results/               │
+└─────────────────────────────┘
 ```
 
 ## Core Components
@@ -143,9 +154,90 @@ PENDING, QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED
 - `seed` (INTEGER) — Random seed for reproducibility
 - `params` (TEXT) — Additional simulation parameters (JSON)
 
+**Phase 3 additions:**
+- `error_message` (TEXT) — Error details on failure
+- `container_network` (STRING) — Custom bridge network name for isolation
+
 **Existing Columns:**
 - `status`, `config`, `scenario_id`, `strategy_id`
 - Container IDs, timing, progress tracking, logs
+
+### 3a. Docker Container Orchestration (Phase 3)
+
+#### ContainerManager Service
+
+**Location:** `backend/app/services/orchestrator/container_manager.py`
+
+**Purpose:** Manage Docker container lifecycle for experiments.
+
+**Key Responsibilities:**
+- Create containers from BatSim and PyBatsim images
+- Mount frozen configuration files
+- Set environment variables (seed, params, etc.)
+- Monitor container health and status
+- Collect real-time logs from running containers
+- Clean up containers on completion or failure
+- Handle timeout and graceful shutdown
+
+**Key Methods:**
+- `create_experiment_containers()` — Launch BatSim + PyBatsim pair
+- `get_container_status()` — Check running state
+- `get_container_logs()` — Stream logs without blocking
+- `stop_container()` — Gracefully terminate with timeout
+- `cleanup_containers()` — Remove and clean resources
+- `cleanup_orphans()` — Detect stale containers on startup
+
+#### OrchestratorService
+
+**Location:** `backend/app/services/orchestrator/orchestrator_service.py`
+
+**Purpose:** Background orchestration of experiment lifecycle.
+
+**Architecture:**
+- Runs as background thread in main FastAPI app
+- Polls database for QUEUED experiments
+- Automatically promotes to RUNNING when slots available
+- Monitors running experiments for completion/failure
+- Updates database with progress, exit codes, logs
+- Enforces state transitions atomically
+
+**State Progression:**
+1. PENDING → QUEUED (user initiated)
+2. QUEUED → RUNNING (orchestrator, when slots available)
+3. RUNNING → COMPLETED (on success)
+4. RUNNING → FAILED (on error, timeout, or crash)
+5. CANCELLED → (terminal, no further promotion)
+
+**Concurrency Control:**
+- `MAX_CONCURRENT_SIMULATIONS` (default: 2)
+- FIFO queue by `created_at` timestamp
+- Row-level locking for state updates
+- Atomic promotions prevent race conditions
+
+**Timeout Handling:**
+- Per-experiment timeout from `params.timeout` (default: 3600s)
+- Container graceful shutdown with SIGTERM
+- Force kill (SIGKILL) if timeout exceeded
+- Error message recorded for failure analysis
+
+#### Live Log Streaming
+
+**Endpoint:** `GET /api/experiments/{id}/logs`
+
+**Features:**
+- Stream logs from running containers in real-time
+- No blocking I/O; uses non-blocking collection
+- Aggregates stdout/stderr from BatSim + PyBatsim
+- Frontend websocket fallback via polling (Phase 4)
+- Logs persisted to storage on experiment completion
+
+#### Network Isolation
+
+**Implementation:**
+- Custom bridge network per experiment group
+- Container names include experiment UUID
+- Prevents network conflicts with other simulations
+- Enables inter-container communication (BatSim ↔ PyBatsim)
 
 ### 4. API Endpoints
 
@@ -161,8 +253,9 @@ PENDING, QUEUED, RUNNING, PAUSED, COMPLETED, FAILED, CANCELLED
 | `/api/experiments/{id}` | PUT | Update non-status fields (name, description) |
 | `/api/experiments/{id}` | DELETE | Delete experiment + cleanup files |
 | `/api/experiments/{id}/start` | POST | Enqueue experiment (PENDING→QUEUED) |
-| `/api/experiments/{id}/stop` | POST | Cancel experiment |
-| `/api/experiments/{id}/status` | GET | Get status, progress, frozen_config |
+| `/api/experiments/{id}/stop` | POST | Cancel experiment (RUNNING/QUEUED→CANCELLED) |
+| `/api/experiments/{id}/status` | GET | Get status, progress, frozen_config, error_message |
+| `/api/experiments/{id}/logs` | GET | Stream live logs from running containers (Phase 3) |
 | `/api/experiments/queue` | GET | Get queue status (running, queued, slots) |
 
 **Create Experiment Request:**
@@ -271,14 +364,25 @@ ALTER TABLE strategies ADD COLUMN version INTEGER DEFAULT 1;
    - If slots available: promotes to RUNNING
    - Otherwise: stays QUEUED until slot opens
 
-### Run Experiment (Phase 3)
+### Run Experiment (Phase 3 - Container Orchestration)
 
-1. Worker/scheduler monitors RUNNING experiments
-2. Launches containers (BatSim, PyBatsim)
-3. Passes frozen files from `experiments/{id}/`
-4. Updates progress_percentage, completed_jobs
-5. On completion: sets status=COMPLETED, end_time
-6. Calls process_queue() → promotes next QUEUED experiment
+1. OrchestratorService background thread polls for QUEUED experiments
+2. When slot available: promotes experiment to RUNNING
+3. ContainerManager creates Docker containers:
+   - BatSim container with frozen workload/platform files
+   - PyBatsim container with frozen strategy file
+   - Custom bridge network for container communication
+   - Environment variables: seed, params, timeout
+4. Containers execute simulation:
+   - PyBatsim connects to BatSim via socket
+   - Logs streamed in real-time via container.logs(stream=True)
+   - ContainerManager monitors container health
+5. On completion or timeout:
+   - Collects final logs and exit codes
+   - Records error_message if failed
+   - Sets status=COMPLETED or FAILED
+   - Cleans up containers and network
+6. OrchestratorService calls process_queue() → promotes next QUEUED experiment
 
 ## Security Considerations
 
@@ -310,18 +414,20 @@ shutil.rmtree(exp_dir, ignore_errors=True)
 
 ## Future Phases (Roadmap)
 
-**Phase 3:** Container orchestration (Docker SDK)
-- Monitor container status
-- Collect metrics and logs
-- Handle container failures
+**Phase 3 (Complete ✅):** Container orchestration with Docker SDK
+- Automated container lifecycle management
+- Real-time log streaming
+- Graceful failure handling and cleanup
 
 **Phase 4:** Real-time monitoring
-- WebSocket updates for progress
+- WebSocket updates for progress (upgrade from HTTP polling)
 - System resource tracking
+- Live metric aggregation from containers
 
 **Phase 5:** Advanced analytics
-- Comparative analysis
-- Trend visualization
+- Comparative analysis across experiments
+- Trend visualization and reporting
+- Custom metric calculations
 
 ## Environment Variables
 
@@ -332,6 +438,13 @@ STORAGE_PATH=./storage
 SIMULATION_DATA_PATH=./storage/experiments
 MAX_CONCURRENT_SIMULATIONS=2
 BACKEND_CORS_ORIGINS=["http://localhost:5173"]
+
+# Docker orchestration (Phase 3)
+DOCKER_HOST=unix:///var/run/docker.sock  # Linux
+DOCKER_SOCKET=/var/run/docker.sock
+BATSIM_IMAGE=batsim:latest
+PYBATSIM_IMAGE=pybatsim:latest
+EXPERIMENT_TIMEOUT=3600  # Default 1 hour
 ```
 
 ## Technology Stack

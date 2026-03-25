@@ -19,6 +19,8 @@ def run_migrations():
             "frozen_config": "TEXT",
             "seed": "INTEGER",
             "params": "TEXT",
+            "error_message": "TEXT",
+            "container_network": "TEXT",
         },
         "workloads": {"version": "INTEGER DEFAULT 1"},
         "platforms": {"version": "INTEGER DEFAULT 1"},
@@ -213,6 +215,13 @@ def seed_demo_data():
 
 
 seed_admin_user()
+
+# Cleanup orphan Docker containers from previous crashes
+try:
+    from app.services.orchestrator.container_manager import cleanup_orphan_containers
+    cleanup_orphan_containers()
+except Exception as e:
+    print(f"[WARN] Orphan container cleanup failed (Docker may not be available): {e}")
 
 
 @app.get("/")
