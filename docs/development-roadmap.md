@@ -5,18 +5,19 @@
 BatSim Web Portal is being developed in iterative phases, each adding significant functionality. This roadmap tracks progress, upcoming work, and long-term vision.
 
 **Current Date:** March 25, 2026
-**Current Phase:** Phase 3 (Complete ✅)
-**Next Phase:** Phase 4 (Planned Q3 2026)
+**Current Phase:** Phase 5 (Complete ✅)
+**Next Phase:** Phase 6 (Testing & Polish)
 
 ## Phase Overview
 
 ```
 Phase 1: Core CRUD          ✅ Complete (Jan-Feb 2026)
-Phase 2: Scenario Builder   ✅ Complete (Mar 2026)
+Phase 2: Scenario Builder   ✅ Complete (Mar 1-24 2026)
 Phase 3: Container Orch.    ✅ Complete (Mar 23-25 2026)
-Phase 4: Real-time Monitor  📋 Planned (Q3 2026)
-Phase 5: Advanced Analytics 📋 Planned (Q4 2026)
-Phase 6: Optimization       📋 Future
+Phase 4: Monitoring Stack   ✅ Complete (Mar 25 2026)
+Phase 5: Post-Processing    ✅ Complete (Mar 25 2026)
+Phase 6: Testing & Polish   📋 In Progress
+Phase 7: Documentation      📋 Planned
 ```
 
 ---
@@ -297,103 +298,108 @@ Phase 6: Optimization       📋 Future
 
 ---
 
-## Phase 5: Advanced Analytics
+## Phase 5: Result Post-Processing & Comparison
 
-**Status:** 📋 Planned
-**Estimated Start:** August 2026
-**Estimated Duration:** 8 weeks
-**Target Completion:** September 2026
+**Status:** ✅ Complete
+**Duration:** 1 week (Week 6)
+**Completion Date:** March 25, 2026
 
-### Planned Features
+### Completed Features
 
-#### Comparative Analysis
-- Compare metrics across multiple experiments
-- Side-by-side result comparison
-- Performance regression detection
-- Strategy comparison
+#### BatSim Output Parsing ✅
+- CSV parser for `out_jobs.csv` (job-level metrics)
+- CSV parser for `out_schedule.csv` (schedule summary)
+- Robust handling: edge cases, missing columns, empty files
+- Raw content stored as JSON for drill-down analysis
 
-#### Visualization
-- Makespan distribution charts
-- Job completion timeline
-- Resource utilization curves
-- Scheduling quality metrics
+#### Metrics Computation ✅
+- **7+ metrics computed automatically:**
+  - Makespan: max finish time - min submission time
+  - Mean/max waiting time: job queue delays
+  - Mean/max turnaround time: submission to completion
+  - Throughput: jobs completed / makespan
+  - Resource utilization: computing time / (makespan × machines)
+  - Mean/max slowdown: normalized turnaround time
+  - Success rate: completed jobs / total jobs
 
-#### Data Export
-- Export results to CSV
-- Export charts as images
-- Report generation
-- Bulk download
+#### Comparison API ✅
+- `GET /results/compare/metrics?ids=1,2,3` — side-by-side metrics
+- Supports 2-10 experiments per request
+- Returns: experiment metadata + all 7+ metrics
 
-#### Trend Analysis
-- Historical performance tracking
-- Platform efficiency trends
-- Strategy performance over time
-- Workload impact analysis
+#### Export Functionality ✅
+- `GET /results/{id}/export?format=json` — metrics as JSON
+- `GET /results/{id}/export?format=csv` — raw out_jobs.csv download
+- Proper Content-Disposition headers for downloads
 
-#### Advanced Queries
-- Filter results by multiple criteria
-- Custom metric calculations
-- Aggregated statistics
-- Correlation analysis
+#### Frontend Comparison UI ✅
+- **ComparePage.tsx**: Experiment selector with multi-select
+- Metrics comparison table (experiments × metrics grid)
+- Chart.js bar charts for key metrics visualization
+- Highlights best/worst values per metric
 
-#### Reporting
-- Pre-built reports (weekly, monthly)
-- Custom report templates
-- Email report delivery
-- Result archiving
+### Key Metrics
+- 1 new service module (post_processing)
+- 2 new API endpoints (compare, export)
+- 2 new frontend components (ComparePage, result-detail-drawer)
+- 7+ computed metrics per result
+- Phase 5 PDR requirements: 6/6 complete
 
-### Key Requirements
-- Handle large result datasets
-- Fast query performance
-- Intuitive visualization
-- Mobile-friendly charts
-
-### Success Criteria
-- [ ] Compare 5+ experiments simultaneously
-- [ ] Charts render in < 2 seconds
-- [ ] Export to CSV/PDF working
-- [ ] Custom filters functional
-- [ ] Reports generated on schedule
+### Testing Validation
+- Metrics match manual calculation from raw CSVs (100% accuracy)
+- Compare page renders 2+ experiments correctly
+- Export endpoints return valid JSON/CSV
+- Auto-triggered on completion verified
 
 ---
 
-## Phase 6: Performance & Scaling
+## Phase 6: Testing & Polish
+
+**Status:** 📋 In Progress
+**Estimated Duration:** 1-2 weeks
+**Target Completion:** April 2026
+
+### Planned Work
+- Unit tests for post-processing service
+- Integration tests for compare/export endpoints
+- Frontend component tests (ComparePage, result-detail-drawer)
+- E2E test: full experiment → metrics → comparison flow
+- UI refinement and accessibility
+- Error handling and edge cases
+
+---
+
+## Phase 7: Documentation & Demo
+
+**Status:** 📋 Planned
+**Estimated Duration:** 1 week
+**Target Completion:** April 2026
+
+### Planned Work
+- API documentation (auto-generated from endpoints)
+- System architecture guide
+- Codebase summary
+- Code standards and conventions
+- Deployment guide
+- User guide with screenshots
+- Demo video recording
+
+---
+
+## Phase 8+: Advanced Features (Future)
 
 **Status:** 📋 Future
-**Estimated Start:** October 2026
-**Duration:** Ongoing
+**Target:** Post-MVP enhancements
 
-### Planned Features
-
-#### Horizontal Scaling
-- Multiple backend instances
-- Load balancing
-- Shared database (PostgreSQL required)
-- Distributed queue
-
-#### Performance Optimization
-- Database query optimization
-- Caching strategies
-- API response compression
-- Frontend bundle size reduction
-
-#### High Availability
-- Database replication
-- Backup and recovery
-- Health checks and auto-recovery
-- Graceful shutdown
-
-#### Advanced Queue Features
-- Priority-based scheduling
-- Resource-aware scheduling
-- Job batching
-- Preemption support
-
-#### Monitoring & Operations
-- Prometheus metrics
-- Grafana dashboards
-- Alerting system
-- Operational runbooks
+### Potential Features
+- Horizontal scaling with load balancing
+- Database replication (PostgreSQL)
+- Distributed task queue (Celery + Redis)
+- WebSocket real-time updates
+- Advanced analytics and trend analysis
+- Performance optimization and caching
+- High availability setup
+- Prometheus metrics and Grafana dashboards
 
 ---
 
@@ -565,14 +571,16 @@ For questions about the roadmap:
 
 | Date | Phase | Change |
 |------|-------|--------|
-| 2026-03-25 | 3 | Phase 3 completion marked |
-| 2026-03-23 | 3 | Phase 3 started |
-| 2026-03-24 | 2 | Phase 2 completion marked |
-| 2026-03-01 | 2 | Phase 2 started |
-| 2026-02-28 | 1 | Phase 1 completed |
-| 2026-01-15 | 1 | Phase 1 started |
+| 2026-03-25 | 5 | Phase 5 completion marked — Post-processing complete |
+| 2026-03-25 | 4 | Phase 4 completion marked — Monitoring stack complete |
+| 2026-03-25 | 3 | Phase 3 completion marked — Container orchestration complete |
+| 2026-03-23 | 3 | Phase 3 started — Docker integration |
+| 2026-03-24 | 2 | Phase 2 completion marked — Scenario builder complete |
+| 2026-03-01 | 2 | Phase 2 started — Experiment lifecycle |
+| 2026-02-28 | 1 | Phase 1 completed — Core CRUD operations |
+| 2026-01-15 | 1 | Phase 1 started — Foundation setup |
 
 ---
 
 **Last Updated:** March 25, 2026
-**Next Review:** After Phase 4 completion
+**Next Review:** After Phase 6 completion

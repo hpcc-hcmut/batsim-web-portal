@@ -29,18 +29,19 @@ import {
   Analytics,
   AccountCircle,
   Logout,
+  CompareArrows,
 } from "@mui/icons-material";
 import useAuthStore from "../store/authStore";
 
 const drawerWidth = 240;
 
-interface MenuItem {
+interface NavItem {
   text: string;
   icon: React.ReactNode;
   path: string;
 }
 
-const menuItems: MenuItem[] = [
+const menuItems: NavItem[] = [
   { text: "Dashboard", icon: <Dashboard />, path: "/" },
   { text: "Workloads", icon: <Storage />, path: "/workloads" },
   { text: "Platforms", icon: <Computer />, path: "/platforms" },
@@ -48,6 +49,7 @@ const menuItems: MenuItem[] = [
   { text: "Strategies", icon: <Code />, path: "/strategies" },
   { text: "Experiments", icon: <Science />, path: "/experiments" },
   { text: "Results", icon: <Assessment />, path: "/results" },
+  { text: "Compare", icon: <CompareArrows />, path: "/compare" },
   { text: "Analytics", icon: <Analytics />, path: "/analytics" },
 ];
 

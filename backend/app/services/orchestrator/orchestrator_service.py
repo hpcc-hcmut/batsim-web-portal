@@ -174,6 +174,12 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
         experiments_completed_total.inc()
         # Try to parse output for job count
         _parse_simulation_output(db, experiment_id, exp_dir)
+        # Auto post-process: create Result record with computed metrics
+        try:
+            from app.services.post_processing import process_experiment_results
+            process_experiment_results(db, experiment_id, exp_dir)
+        except Exception as e:
+            logger.warning(f"[Exp {experiment_id}] Post-processing failed: {e}")
     else:
         error_msg = (
             f"BatSim exit code: {batsim_exit}, PyBatsim exit code: {pybatsim_exit}"

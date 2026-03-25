@@ -20,6 +20,7 @@ import StrategiesPage from "./pages/StrategiesPage";
 import ExperimentsPage from "./pages/ExperimentsPage";
 import ResultsPage from "./pages/ResultsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import ComparePage from "./pages/ComparePage";
 
 // Add Red Hat Display font import to the document head
 if (typeof document !== "undefined") {
@@ -151,6 +152,7 @@ const App: React.FC = () => {
               <Route path="strategies" element={<StrategiesPage />} />
               <Route path="experiments" element={<ExperimentsPage />} />
               <Route path="results" element={<ResultsPage />} />
+              <Route path="compare" element={<ComparePage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
             </Route>
           </Routes>

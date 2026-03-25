@@ -1,11 +1,14 @@
-from typing import List, Optional
+from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 import csv
 import json
+import io
 import os
+import logging
 from app.core.database import get_db
 from app.models.user import User
 from app.models.result import Result
@@ -17,6 +20,8 @@ from app.schemas.result import (
     ResultWithExperiment,
 )
 from app.api.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -55,7 +60,6 @@ def get_analytics(
         joinedload(Result.experiment).joinedload(Experiment.strategy),
     )
 
-    # Apply date filters if provided
     if start_date:
         try:
             start_dt = datetime.strptime(start_date, "%Y-%m-%d")
@@ -70,7 +74,6 @@ def get_analytics(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid end_date format")
 
-    # Get all results for analytics
     results = query.all()
 
     if not results:
@@ -90,11 +93,9 @@ def get_analytics(
             "top_scenarios": [],
         }
 
-    # Calculate basic statistics
     total_results = len(results)
     total_experiments = len(set(r.experiment_id for r in results))
 
-    # Calculate averages (excluding None values)
     makespans = [r.makespan for r in results if r.makespan is not None]
     waiting_times = [
         r.average_waiting_time for r in results if r.average_waiting_time is not None
@@ -117,13 +118,11 @@ def get_analytics(
         sum(utilizations) / len(utilizations) if utilizations else 0
     )
 
-    # Job statistics
     total_jobs = sum(r.total_jobs or 0 for r in results)
     completed_jobs = sum(r.completed_jobs or 0 for r in results)
     failed_jobs = sum(r.failed_jobs or 0 for r in results)
     success_rate = (completed_jobs / total_jobs * 100) if total_jobs > 0 else 0
 
-    # Results by date
     results_by_date = {}
     for result in results:
         date = result.created_at.strftime("%Y-%m-%d")
@@ -134,7 +133,6 @@ def get_analytics(
         for date, count in sorted(results_by_date.items())
     ]
 
-    # Top strategies (by number of results)
     strategy_counts = {}
     for result in results:
         if result.experiment and result.experiment.strategy:
@@ -148,7 +146,6 @@ def get_analytics(
         )[:5]
     ]
 
-    # Top scenarios (by number of results)
     scenario_counts = {}
     for result in results:
         if result.experiment and result.experiment.scenario:
@@ -179,6 +176,77 @@ def get_analytics(
     }
 
 
+# Static path routes MUST come before parameterized /{result_id} routes
+@router.get("/compare/metrics")
+def compare_experiments(
+    ids: str = Query(..., description="Comma-separated experiment IDs"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Compare metrics across multiple experiments side by side."""
+    try:
+        exp_ids = [int(x.strip()) for x in ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid experiment ID format")
+
+    if len(exp_ids) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 experiment IDs")
+    if len(exp_ids) > 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 experiments for comparison")
+
+    comparisons = []
+    for eid in exp_ids:
+        exp = db.query(Experiment).filter(Experiment.id == eid).first()
+        if not exp:
+            continue
+
+        result = (
+            db.query(Result)
+            .filter(Result.experiment_id == eid)
+            .order_by(desc(Result.created_at))
+            .first()
+        )
+
+        entry = {
+            "experiment_id": eid,
+            "experiment_name": exp.name,
+            "scenario_name": exp.scenario.name if exp.scenario else None,
+            "strategy_name": exp.strategy.name if exp.strategy else None,
+            "status": exp.status.value if hasattr(exp.status, "value") else str(exp.status),
+            "seed": exp.seed,
+            "has_result": result is not None,
+        }
+
+        if result:
+            entry.update({
+                "makespan": result.makespan,
+                "average_waiting_time": result.average_waiting_time,
+                "average_turnaround_time": result.average_turnaround_time,
+                "resource_utilization": result.resource_utilization,
+                "total_jobs": result.total_jobs,
+                "completed_jobs": result.completed_jobs,
+                "failed_jobs": result.failed_jobs,
+                "simulation_time": result.simulation_time,
+            })
+            if result.computed_metrics:
+                try:
+                    cm = json.loads(result.computed_metrics)
+                    entry["max_waiting_time"] = cm.get("max_waiting_time")
+                    entry["max_turnaround_time"] = cm.get("max_turnaround_time")
+                    entry["mean_slowdown"] = cm.get("mean_slowdown")
+                    entry["max_slowdown"] = cm.get("max_slowdown")
+                    entry["success_rate"] = cm.get("success_rate")
+                    entry["throughput"] = cm.get("throughput")
+                    entry["consumed_joules"] = cm.get("consumed_joules")
+                except json.JSONDecodeError:
+                    pass
+
+        comparisons.append(entry)
+
+    return {"experiments": comparisons}
+
+
+# Parameterized routes below
 @router.get("/{result_id}", response_model=ResultWithExperiment)
 def get_result(
     result_id: int,
@@ -204,7 +272,6 @@ def create_result(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # Check if experiment exists
     experiment = (
         db.query(Experiment)
         .filter(Experiment.id == result_create.experiment_id)
@@ -213,7 +280,6 @@ def create_result(
     if experiment is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
 
-    # Parse result files if they exist
     jobs_data = None
     schedule_data = None
     computed_metrics = None
@@ -222,13 +288,11 @@ def create_result(
         result_create.result_file_path
     ):
         try:
-            # Parse jobs CSV
             jobs_file = os.path.join(result_create.result_file_path, "out_jobs.csv")
             if os.path.exists(jobs_file):
                 with open(jobs_file, "r") as f:
                     jobs_data = f.read()
 
-            # Parse schedule CSV
             schedule_file = os.path.join(
                 result_create.result_file_path, "out_schedule.csv"
             )
@@ -236,9 +300,8 @@ def create_result(
                 with open(schedule_file, "r") as f:
                     schedule_data = f.read()
 
-                # Compute additional metrics from schedule data
-                f.seek(0)
-                reader = csv.DictReader(f)
+                # Parse computed metrics from schedule data string
+                reader = csv.DictReader(io.StringIO(schedule_data))
                 for row in reader:
                     computed_metrics = {
                         "batsim_version": row.get("batsim_version"),
@@ -256,10 +319,9 @@ def create_result(
                         ),
                     }
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to parse result files: {e}")
 
-    # Create result record
     result = Result(
         experiment_id=result_create.experiment_id,
         simulation_time=result_create.simulation_time,
@@ -314,3 +376,55 @@ def delete_result(
     db.delete(res)
     db.commit()
     return {"message": "Result deleted successfully"}
+
+
+@router.get("/{result_id}/export")
+def export_result(
+    result_id: int,
+    export_format: str = Query("json", alias="format", description="Export format: json or csv"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Export result data as JSON or CSV."""
+    if export_format not in ("json", "csv"):
+        raise HTTPException(status_code=400, detail="Format must be 'json' or 'csv'")
+
+    result = db.query(Result).filter(Result.id == result_id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not found")
+
+    if export_format == "csv":
+        if result.jobs_data:
+            return Response(
+                content=result.jobs_data,
+                media_type="text/csv",
+                headers={"Content-Disposition": f"attachment; filename=experiment_{result.experiment_id}_jobs.csv"},
+            )
+        raise HTTPException(status_code=404, detail="No jobs data available for export")
+
+    export_data = {
+        "experiment_id": result.experiment_id,
+        "result_id": result.id,
+        "created_at": result.created_at.isoformat() if result.created_at else None,
+        "metrics": {
+            "makespan": result.makespan,
+            "average_waiting_time": result.average_waiting_time,
+            "average_turnaround_time": result.average_turnaround_time,
+            "resource_utilization": result.resource_utilization,
+            "simulation_time": result.simulation_time,
+            "total_jobs": result.total_jobs,
+            "completed_jobs": result.completed_jobs,
+            "failed_jobs": result.failed_jobs,
+        },
+    }
+    if result.computed_metrics:
+        try:
+            export_data["computed_metrics"] = json.loads(result.computed_metrics)
+        except json.JSONDecodeError:
+            pass
+
+    return Response(
+        content=json.dumps(export_data, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename=experiment_{result.experiment_id}_metrics.json"},
+    )

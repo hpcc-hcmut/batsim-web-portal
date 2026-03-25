@@ -402,6 +402,10 @@ export const resultsAPI = {
   }): Promise<AxiosResponse<any>> => api.get("/results/analytics", { params }),
   delete: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.delete(`/results/${id}`),
+  compare: (ids: number[]): Promise<AxiosResponse<{ experiments: any[] }>> =>
+    api.get(`/results/compare/metrics?ids=${ids.join(",")}`),
+  exportResult: (id: number, format: "json" | "csv" = "json") =>
+    api.get(`/results/${id}/export?format=${format}`, { responseType: "blob" }),
 };
 
 // Templates API
