@@ -164,9 +164,12 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
     batsim_exit = result.get("batsim_exit", -1)
     pybatsim_exit = result.get("pybatsim_exit", -1)
 
-    # Record duration
+    # Record duration (start_time from SQLite is naive; make it UTC-aware before diff)
     if exp.start_time:
-        duration = (datetime.now(timezone.utc) - exp.start_time).total_seconds()
+        start = exp.start_time
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        duration = (datetime.now(timezone.utc) - start).total_seconds()
         experiment_duration_seconds.labels(experiment_id=str(experiment_id)).observe(duration)
 
     if batsim_exit == 0:
