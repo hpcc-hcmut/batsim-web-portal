@@ -1,0 +1,11 @@
+{
+  "nb_res": 4,
+  "jobs": [
+    {"id": 0, "subtime": 0, "res": 2, "profile": "delay_10s", "walltime": 100},
+    {"id": 1, "subtime": 5, "res": 1, "profile": "delay_20s", "walltime": 200}
+  ],
+  "profiles": {
+    "delay_10s": {"type": "delay", "delay": 10},
+    "delay_20s": {"type": "delay", "delay": 20}
+  }
+}

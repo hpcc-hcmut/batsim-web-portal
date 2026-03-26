@@ -27,7 +27,7 @@ def ensure_storage_directory():
 
 def _parse_and_validate_platform(file_path: str):
     """Validate platform file and return validation result."""
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
     return validate_platform(content), content
 

@@ -1,0 +1,11 @@
+<?xml version='1.0'?>
+<!DOCTYPE platform SYSTEM "https://simgrid.org/simgrid.dtd">
+<platform version="4.1">
+  <zone id="world" routing="Full">
+    <cluster id="cluster0" prefix="host-" suffix=".test"
+             radical="0-3" speed="1Gf" bw="125MBps" lat="50us" />
+    <host id="master_host0" speed="1Gf">
+      <prop id="role" value="master" />
+    </host>
+  </zone>
+</platform>

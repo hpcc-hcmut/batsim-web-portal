@@ -28,7 +28,7 @@ def ensure_storage_directory():
 
 def _parse_and_validate_workload(file_path: str, filename: str):
     """Validate workload file and extract metadata. Returns (result, data)."""
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
     result = validate_workload(content)
     data = result.metadata.get("_parsed_data")

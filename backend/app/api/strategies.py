@@ -28,7 +28,7 @@ def ensure_storage_directory():
 
 def _parse_and_validate_strategy(file_path: str, filename: str):
     """Validate strategy file and return (result, content)."""
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
     result = validate_strategy(content, filename)
     return result, content
