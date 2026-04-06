@@ -51,10 +51,19 @@ class ResultInDB(ResultBase):
     resource_utilization: Optional[float] = None
     config: Optional[str] = None
     metrics: Optional[str] = None
+    metric_json: Optional[str] = None
+    summary_json: Optional[str] = None
     logs: Optional[str] = None
     result_file_path: Optional[str] = None
     log_file_path: Optional[str] = None
+    jobs_csv_path: Optional[str] = None
+    schedule_csv_path: Optional[str] = None
+    raw_output_dir: Optional[str] = None
     created_at: datetime
+    ingested_at: Optional[datetime] = None
+    parser_version: Optional[str] = None
+    metric_version: Optional[str] = None
+    parsing_warnings: Optional[str] = None
     jobs_data: Optional[str] = None
     schedule_data: Optional[str] = None
     computed_metrics: Optional[str] = None

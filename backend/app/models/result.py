@@ -25,13 +25,22 @@ class Result(Base):
     # Detailed results
     config = Column(Text)  # JSON string of experiment configuration
     metrics = Column(Text)  # JSON string of detailed metrics
+    metric_json = Column(Text)
+    summary_json = Column(Text)
     logs = Column(Text)  # Simulation logs
 
     # File paths
     result_file_path = Column(String)  # Path to result files
     log_file_path = Column(String)  # Path to log files
+    jobs_csv_path = Column(String)
+    schedule_csv_path = Column(String)
+    raw_output_dir = Column(String)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    ingested_at = Column(DateTime(timezone=True), server_default=func.now())
+    parser_version = Column(String)
+    metric_version = Column(String)
+    parsing_warnings = Column(Text)
 
     # Parsed result data
     jobs_data = Column(Text, nullable=True)  # Store as CSV string

@@ -7,6 +7,7 @@ from app.models.experiment import ExperimentStatus
 class ExperimentBase(BaseModel):
     name: str
     description: Optional[str] = None
+    campaign_id: Optional[int] = None
     scenario_id: int
     strategy_id: int
 
@@ -20,13 +21,21 @@ class ExperimentUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[ExperimentStatus] = None
     config: Optional[Dict[str, Any]] = None
+    seed: Optional[int] = None
 
 
 class ExperimentInDB(ExperimentBase):
     id: int
     status: ExperimentStatus
-    batsim_container_id: Optional[str] = None
-    pybatsim_container_id: Optional[str] = None
+    run_uuid: Optional[str] = None
+    seed: Optional[int] = None
+    parameter_json: Optional[str] = None
+    execution_backend: Optional[str] = None
+    batsim_version: Optional[str] = None
+    scheduler_version: Optional[str] = None
+    strategy_commit_hash: Optional[str] = None
+    platform_checksum: Optional[str] = None
+    workload_checksum: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     estimated_duration: Optional[int] = None
@@ -34,7 +43,17 @@ class ExperimentInDB(ExperimentBase):
     completed_jobs: int = 0
     progress_percentage: int = 0
     config: Optional[str] = None
+    status_detail: Optional[str] = None
+    failure_reason: Optional[str] = None
     simulation_dir: Optional[str] = None
+    manifest_path: Optional[str] = None
+    stdout_log_path: Optional[str] = None
+    stderr_log_path: Optional[str] = None
+    batsim_stdout_log_path: Optional[str] = None
+    batsim_stderr_log_path: Optional[str] = None
+    scheduler_stdout_log_path: Optional[str] = None
+    scheduler_stderr_log_path: Optional[str] = None
+    exit_code: Optional[int] = None
     batsim_logs: Optional[str] = None
     pybatsim_logs: Optional[str] = None
     created_by: Optional[int] = None

@@ -18,6 +18,7 @@ import PlatformsPage from "./pages/PlatformsPage";
 import ScenariosPage from "./pages/ScenariosPage";
 import StrategiesPage from "./pages/StrategiesPage";
 import ExperimentsPage from "./pages/ExperimentsPage";
+import CampaignsPage from "./pages/CampaignsPage";
 import ResultsPage from "./pages/ResultsPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 
@@ -150,6 +151,7 @@ const App: React.FC = () => {
               <Route path="scenarios" element={<ScenariosPage />} />
               <Route path="strategies" element={<StrategiesPage />} />
               <Route path="experiments" element={<ExperimentsPage />} />
+              <Route path="campaigns" element={<CampaignsPage />} />
               <Route path="results" element={<ResultsPage />} />
               <Route path="analytics" element={<AnalyticsPage />} />
             </Route>

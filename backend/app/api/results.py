@@ -1,11 +1,13 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 import csv
 import json
 import os
+import shutil
 from app.core.database import get_db
 from app.models.user import User
 from app.models.result import Result
@@ -17,6 +19,7 @@ from app.schemas.result import (
     ResultWithExperiment,
 )
 from app.api.auth import get_current_user
+from app.services.result_ingestor import ingest_experiment_results
 
 router = APIRouter()
 
@@ -196,6 +199,60 @@ def get_result(
         if res.experiment.strategy:
             res_dict.strategy_name = res.experiment.strategy.name
     return res_dict
+
+
+@router.get("/by-experiment/{experiment_id}", response_model=ResultWithExperiment)
+def get_result_by_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    res = db.query(Result).filter(Result.experiment_id == experiment_id).first()
+    if res is None:
+        raise HTTPException(status_code=404, detail="Result not found")
+    res_dict = ResultWithExperiment.from_orm(res)
+    if res.experiment:
+        res_dict.experiment_name = res.experiment.name
+        if res.experiment.scenario:
+            res_dict.scenario_name = res.experiment.scenario.name
+        if res.experiment.strategy:
+            res_dict.strategy_name = res.experiment.strategy.name
+    return res_dict
+
+
+@router.post("/ingest/{experiment_id}", response_model=ResultSchema)
+def ingest_result(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    experiment = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if experiment is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    try:
+        return ingest_experiment_results(db, experiment)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.get("/{result_id}/export")
+def export_result_bundle(
+    result_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = db.query(Result).filter(Result.id == result_id).first()
+    if result is None:
+        raise HTTPException(status_code=404, detail="Result not found")
+    if not result.raw_output_dir or not os.path.isdir(result.raw_output_dir):
+        raise HTTPException(status_code=404, detail="Result output directory not found")
+
+    archive_path = shutil.make_archive(result.raw_output_dir, "zip", result.raw_output_dir)
+    return FileResponse(
+        archive_path,
+        media_type="application/zip",
+        filename=f"result-{result.id}.zip",
+    )
 
 
 @router.post("/", response_model=ResultSchema)

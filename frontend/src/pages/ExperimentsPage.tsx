@@ -30,10 +30,12 @@ import { Science, PlayArrow, Stop, Add } from "@mui/icons-material";
 import {
   experimentsAPI,
   Experiment,
+  ExperimentLogs,
   scenariosAPI,
   strategiesAPI,
   Scenario,
   Strategy,
+  downloadBlob,
 } from "../services/api";
 
 interface TabPanelProps {
@@ -68,6 +70,13 @@ const ExperimentsPage: React.FC = () => {
   const [selectedExperiment, setSelectedExperiment] =
     useState<Experiment | null>(null);
   const [tabValue, setTabValue] = useState(0);
+  const [experimentLogs, setExperimentLogs] = useState<ExperimentLogs | null>(
+    null
+  );
+  const [experimentManifest, setExperimentManifest] = useState<Record<
+    string,
+    any
+  > | null>(null);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -203,17 +212,81 @@ const ExperimentsPage: React.FC = () => {
   };
 
   const handleExperimentClick = (experiment: Experiment) => {
-    setSelectedExperiment(experiment);
     setDetailDialogOpen(true);
     setTabValue(0);
+    setSelectedExperiment(experiment);
+    setExperimentLogs(null);
+    setExperimentManifest(null);
+    experimentsAPI
+      .getById(experiment.id)
+      .then((res) => setSelectedExperiment(res.data))
+      .catch(() => undefined);
+    experimentsAPI
+      .getLogs(experiment.id)
+      .then((res) => setExperimentLogs(res.data))
+      .catch(() => setExperimentLogs(null));
+    experimentsAPI
+      .getManifest(experiment.id)
+      .then((res) => setExperimentManifest(res.data))
+      .catch(() => setExperimentManifest(null));
+  };
+
+  const refreshExperiments = async () => {
+    const res = await experimentsAPI.getAll();
+    const data = Array.isArray(res.data)
+      ? res.data
+      : (res.data as any).items || [];
+    setExperiments(data);
+  };
+
+  const handleRerunExperiment = async (experimentId: number) => {
+    try {
+      await experimentsAPI.rerun(experimentId);
+      await refreshExperiments();
+      setSnackbar({
+        open: true,
+        message: "Experiment rerun queued successfully!",
+        severity: "success",
+      });
+    } catch {
+      setSnackbar({
+        open: true,
+        message: "Failed to rerun experiment",
+        severity: "error",
+      });
+    }
+  };
+
+  const handleDownloadArtifacts = async (experimentId: number) => {
+    try {
+      const response = await experimentsAPI.downloadArtifacts(experimentId);
+      downloadBlob(response.data, `experiment-${experimentId}.zip`);
+      setSnackbar({
+        open: true,
+        message: "Experiment bundle downloaded.",
+        severity: "success",
+      });
+    } catch {
+      setSnackbar({
+        open: true,
+        message: "Failed to download experiment bundle",
+        severity: "error",
+      });
+    }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
         return "default";
+      case "queued":
+        return "info";
+      case "preparing":
+        return "warning";
       case "running":
         return "primary";
+      case "parsing":
+        return "info";
       case "completed":
         return "success";
       case "failed":
@@ -256,7 +329,7 @@ const ExperimentsPage: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {experiments.map((e) => (
-            <Grid item xs={12} sm={6} md={4} key={e.id}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={e.id}>
               <Card
                 sx={{
                   borderRadius: 1,
@@ -481,6 +554,14 @@ const ExperimentsPage: React.FC = () => {
               <Typography variant="body2" color="text.secondary">
                 {selectedExperiment?.description || "No description provided."}
               </Typography>
+              {selectedExperiment?.status_detail && (
+                <Alert severity="info">{selectedExperiment.status_detail}</Alert>
+              )}
+              {selectedExperiment?.failure_reason && (
+                <Alert severity="error">
+                  {selectedExperiment.failure_reason}
+                </Alert>
+              )}
 
               <Divider />
 
@@ -518,7 +599,33 @@ const ExperimentsPage: React.FC = () => {
                     {new Date(selectedExperiment.end_time).toLocaleString()}
                   </Typography>
                 )}
+                {selectedExperiment?.run_uuid && (
+                  <Typography variant="body2">
+                    Run UUID: {selectedExperiment.run_uuid}
+                  </Typography>
+                )}
+                {selectedExperiment?.execution_backend && (
+                  <Typography variant="body2">
+                    Backend: {selectedExperiment.execution_backend}
+                  </Typography>
+                )}
               </Stack>
+
+              {experimentManifest && (
+                <>
+                  <Divider />
+                  <Typography variant="h6">Manifest</Typography>
+                  <Paper sx={{ p: 2, bgcolor: "grey.900", overflow: "auto" }}>
+                    <Typography
+                      variant="body2"
+                      component="pre"
+                      sx={{ fontFamily: "monospace", fontSize: "0.75rem", m: 0 }}
+                    >
+                      {JSON.stringify(experimentManifest, null, 2)}
+                    </Typography>
+                  </Paper>
+                </>
+              )}
             </Stack>
           </TabPanel>
 
@@ -547,7 +654,8 @@ const ExperimentsPage: React.FC = () => {
 
               <Typography variant="h6">Actions</Typography>
               <Box sx={{ display: "flex", gap: 2 }}>
-                {selectedExperiment?.status === "pending" && (
+                {(selectedExperiment?.status === "pending" ||
+                  selectedExperiment?.status === "failed") && (
                   <Button
                     variant="contained"
                     color="success"
@@ -560,7 +668,9 @@ const ExperimentsPage: React.FC = () => {
                     Start Experiment
                   </Button>
                 )}
-                {selectedExperiment?.status === "running" && (
+                {(selectedExperiment?.status === "running" ||
+                  selectedExperiment?.status === "queued" ||
+                  selectedExperiment?.status === "preparing") && (
                   <Button
                     variant="contained"
                     color="error"
@@ -573,6 +683,22 @@ const ExperimentsPage: React.FC = () => {
                     Stop Experiment
                   </Button>
                 )}
+                {selectedExperiment && (
+                  <Button
+                    variant="outlined"
+                    onClick={() => handleRerunExperiment(selectedExperiment.id)}
+                  >
+                    Rerun
+                  </Button>
+                )}
+                {selectedExperiment && (
+                  <Button
+                    variant="outlined"
+                    onClick={() => handleDownloadArtifacts(selectedExperiment.id)}
+                  >
+                    Download Bundle
+                  </Button>
+                )}
               </Box>
             </Stack>
           </TabPanel>
@@ -581,10 +707,10 @@ const ExperimentsPage: React.FC = () => {
             <Stack spacing={3}>
               <Typography variant="h6">Execution Logs</Typography>
 
-              {selectedExperiment?.batsim_logs && (
+              {(experimentLogs?.batsim_stdout || selectedExperiment?.batsim_logs) && (
                 <Box>
                   <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    Batsim Logs
+                    Batsim Stdout
                   </Typography>
                   <Paper
                     sx={{
@@ -599,16 +725,18 @@ const ExperimentsPage: React.FC = () => {
                       component="pre"
                       sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                     >
-                      {selectedExperiment.batsim_logs}
+                      {experimentLogs?.batsim_stdout ||
+                        selectedExperiment?.batsim_logs}
                     </Typography>
                   </Paper>
                 </Box>
               )}
 
-              {selectedExperiment?.pybatsim_logs && (
+              {(experimentLogs?.scheduler_stdout ||
+                selectedExperiment?.pybatsim_logs) && (
                 <Box>
                   <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                    Pybatsim Logs
+                    Scheduler Stdout
                   </Typography>
                   <Paper
                     sx={{
@@ -623,13 +751,43 @@ const ExperimentsPage: React.FC = () => {
                       component="pre"
                       sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
                     >
-                      {selectedExperiment.pybatsim_logs}
+                      {experimentLogs?.scheduler_stdout ||
+                        selectedExperiment?.pybatsim_logs}
                     </Typography>
                   </Paper>
                 </Box>
               )}
 
-              {!selectedExperiment?.batsim_logs &&
+              {(experimentLogs?.batsim_stderr ||
+                experimentLogs?.scheduler_stderr) && (
+                <Box>
+                  <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                    Stderr
+                  </Typography>
+                  <Paper
+                    sx={{
+                      p: 2,
+                      bgcolor: "grey.900",
+                      maxHeight: 200,
+                      overflow: "auto",
+                    }}
+                  >
+                    <Typography
+                      variant="body2"
+                      component="pre"
+                      sx={{ fontFamily: "monospace", fontSize: "0.75rem" }}
+                    >
+                      {[experimentLogs?.batsim_stderr, experimentLogs?.scheduler_stderr]
+                        .filter(Boolean)
+                        .join("\n\n")}
+                    </Typography>
+                  </Paper>
+                </Box>
+              )}
+
+              {!experimentLogs?.batsim_stdout &&
+                !experimentLogs?.scheduler_stdout &&
+                !selectedExperiment?.batsim_logs &&
                 !selectedExperiment?.pybatsim_logs && (
                   <Typography color="text.secondary">
                     No logs available yet.

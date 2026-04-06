@@ -20,7 +20,6 @@ const LoginPage: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
 
   const navigate = useNavigate();
   const { login, register, isLoading, error, isAuthenticated, clearError } =
@@ -159,7 +158,7 @@ const LoginPage: React.FC = () => {
               fullWidth
               name="password"
               label="Password"
-              type={showPassword ? "text" : "password"}
+              type="password"
               id="password"
               autoComplete={isRegistering ? "new-password" : "current-password"}
               value={password}
@@ -174,7 +173,7 @@ const LoginPage: React.FC = () => {
                 fullWidth
                 name="confirmPassword"
                 label="Confirm Password"
-                type={showPassword ? "text" : "password"}
+                type="password"
                 id="confirmPassword"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

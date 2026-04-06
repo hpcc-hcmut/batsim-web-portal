@@ -3,11 +3,44 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import engine, Base, SessionLocal
 from sqlalchemy.orm import Session
+from sqlalchemy import inspect
 from app.core.security import get_password_hash
 from app.models.user import UserRole
+from app.models import User, Workload, Platform, Scenario, Strategy, Campaign, Experiment, Result
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+
+def _column_sql(column) -> str:
+    column_type = str(column.type)
+    if "VARCHAR" in column_type or "CHAR" in column_type:
+        return "TEXT"
+    if "TEXT" in column_type:
+        return "TEXT"
+    if "INTEGER" in column_type:
+        return "INTEGER"
+    if "DATETIME" in column_type or "TIMESTAMP" in column_type:
+        return "DATETIME"
+    return "TEXT"
+
+
+def ensure_schema_columns():
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        for table in (Experiment.__table__, Result.__table__):
+            existing_columns = {
+                column["name"] for column in inspector.get_columns(table.name)
+            }
+            for column in table.columns:
+                if column.name in existing_columns:
+                    continue
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {table.name} ADD COLUMN {column.name} {_column_sql(column)}"
+                )
+
+
+ensure_schema_columns()
 
 app = FastAPI(
     title="BatSim Web Portal API",
@@ -24,9 +57,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Import models to register them with SQLAlchemy
-from app.models import User, Workload, Platform, Scenario, Strategy, Experiment, Result
-
 # Import and include routers
 from app.api import (
     auth,
@@ -34,6 +64,7 @@ from app.api import (
     platforms,
     scenarios,
     strategies,
+    campaigns,
     experiments,
     results,
     system,
@@ -44,6 +75,7 @@ app.include_router(workloads.router, prefix="/api/workloads", tags=["Workloads"]
 app.include_router(platforms.router, prefix="/api/platforms", tags=["Platforms"])
 app.include_router(scenarios.router, prefix="/api/scenarios", tags=["Scenarios"])
 app.include_router(strategies.router, prefix="/api/strategies", tags=["Strategies"])
+app.include_router(campaigns.router, prefix="/api/campaigns", tags=["Campaigns"])
 app.include_router(experiments.router, prefix="/api/experiments", tags=["Experiments"])
 app.include_router(results.router, prefix="/api/results", tags=["Results"])
 app.include_router(system.router, prefix="/api/system", tags=["System"])
@@ -139,8 +171,8 @@ def seed_demo_data():
                     scenario_id=sc.id,
                     strategy_id=st.id,
                     status="completed" if i % 2 == 0 else "running",
-                    batsim_container_id=f"batsim_{i+1}",
-                    pybatsim_container_id=f"pybatsim_{i+1}",
+                    run_uuid=f"demo-run-{i+1}",
+                    execution_backend="subprocess",
                     simulation_dir=f"/storage/experiments/exp_{i+1}",
                     batsim_logs=f"Batsim started at {i+1}:00:00\nPlatform loaded: {sc.platform.name}\nWorkload loaded: {sc.workload.name}\nSimulation completed successfully.",
                     pybatsim_logs=f"Pybatsim started at {i+1}:00:05\nStrategy loaded: {st.name}\nScheduler initialized\nAll jobs processed.",

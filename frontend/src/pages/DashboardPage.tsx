@@ -7,9 +7,7 @@ import {
   Typography,
   LinearProgress,
   Chip,
-  Paper,
   Button,
-  Avatar,
   Stack,
   Tabs,
   Tab,
@@ -24,25 +22,15 @@ import {
   Code,
   Science,
   Analytics,
-  TrendingUp,
-  Star,
-  ContentCopy,
 } from "@mui/icons-material";
 import {
-  workloadsAPI,
+  Experiment,
+  experimentsAPI,
   platformsAPI,
+  resultsAPI,
   scenariosAPI,
   strategiesAPI,
-  experimentsAPI,
-  resultsAPI,
-} from "../services/api";
-import {
-  Workload,
-  Platform,
-  Scenario,
-  Strategy,
-  Experiment,
-  Result,
+  workloadsAPI,
 } from "../services/api";
 import DashboardAnalyticsGadget from "../components/DashboardAnalyticsGadget";
 
@@ -95,7 +83,7 @@ const DashboardPage: React.FC = () => {
         // Robustly get experiments array
         const experimentsArr = Array.isArray(experimentsRes.data)
           ? experimentsRes.data
-          : experimentsRes.data.items || [];
+          : ((experimentsRes.data as any)?.items || []);
         const runningExperiments = experimentsArr.filter(
           (exp: Experiment) => exp.status === "running"
         ).length;
@@ -136,7 +124,6 @@ const DashboardPage: React.FC = () => {
 
   // Tab filtering logic
   const tabLabels = ["Running", "Completed", "Failed"];
-  const statusMap = ["running", "completed", "failed"];
   const filteredExperiments = experiments.filter(
     (exp) =>
       (expTab === 0 && exp.status === "running") ||
@@ -285,7 +272,7 @@ const DashboardPage: React.FC = () => {
             sx={{ mb: 5, justifyContent: "flex-start" }}
           >
             {statsCards.map((stat) => (
-              <Grid item xs={12} sm={6} md={4} lg={2} key={stat.label}>
+              <Grid size={{ xs: 12, sm: 6, md: 4, lg: 2 }} key={stat.label}>
                 <Card
                   sx={{
                     p: 3,
@@ -337,7 +324,7 @@ const DashboardPage: React.FC = () => {
           scrollButtons="auto"
           sx={{ px: 3, pt: 2 }}
         >
-          {tabLabels.map((label, idx) => (
+          {tabLabels.map((label) => (
             <Tab
               key={label}
               label={label}
@@ -358,7 +345,7 @@ const DashboardPage: React.FC = () => {
           ) : (
             <Grid container spacing={2}>
               {filteredExperiments.map((exp) => (
-                <Grid item xs={12} md={6} lg={4} key={exp.id}>
+                <Grid size={{ xs: 12, md: 6, lg: 4 }} key={exp.id}>
                   <Card
                     sx={{
                       borderRadius: 8,

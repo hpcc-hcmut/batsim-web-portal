@@ -23,18 +23,13 @@ import {
   Alert,
   Divider,
   Tooltip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
 } from "@mui/material";
 import {
   Code,
   Edit,
   Delete,
   Close,
-  UploadFile,
   Download,
-  ExpandMore,
   Description,
   Code as CodeIcon,
 } from "@mui/icons-material";
@@ -66,7 +61,6 @@ const StrategiesPage: React.FC = () => {
     message: string;
     severity: "success" | "error";
   }>({ open: false, message: "", severity: "success" });
-  const [expandedCode, setExpandedCode] = useState(false);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -197,7 +191,7 @@ const StrategiesPage: React.FC = () => {
     if (!selectedStrategy) return;
     try {
       const res = await strategiesAPI.download(selectedStrategy.id);
-      const { file_path, file_name } = res.data;
+      const { file_path } = res.data;
       // For demo: just open the file path (in real app, use a proper download endpoint)
       window.open(file_path, "_blank");
     } catch {
@@ -256,9 +250,8 @@ const StrategiesPage: React.FC = () => {
         ) : (
           <Grid container spacing={3}>
             {strategies.map((s) => {
-              const strategyFiles = getStrategyFiles(s);
               return (
-                <Grid item xs={12} sm={6} md={4} key={s.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={s.id}>
                   <Card
                     sx={{
                       borderRadius: 1,

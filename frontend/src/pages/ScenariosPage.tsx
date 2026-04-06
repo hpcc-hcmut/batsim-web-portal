@@ -67,7 +67,7 @@ const ScenariosPage: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {scenarios.map((s) => (
-            <Grid item xs={12} sm={6} md={4} key={s.id}>
+            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={s.id}>
               <Card
                 sx={{
                   borderRadius: 1,

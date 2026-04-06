@@ -98,7 +98,7 @@ const useAuthStore = create<AuthState>()(
 
         if (token && userStr) {
           try {
-            const user = JSON.parse(userStr) as User;
+            JSON.parse(userStr) as User;
             const userResponse = await authAPI.getMe();
             set({
               user: userResponse.data,

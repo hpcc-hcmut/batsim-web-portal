@@ -33,9 +33,12 @@ import {
   Code as CodeIcon,
   PlayArrow,
 } from "@mui/icons-material";
-import { resultsAPI, Result } from "../services/api";
-
-type PanelMode = "view";
+import {
+  resultsAPI,
+  Result,
+  experimentsAPI,
+  downloadBlob,
+} from "../services/api";
 
 function getFileTypeIcon(fileType: string | undefined) {
   if (!fileType) return <Description sx={{ color: "#4a9eff" }} />;
@@ -113,22 +116,32 @@ const ResultsPage: React.FC = () => {
     }
   };
 
-  const handleRerun = () => {
-    // TODO: Implement rerun functionality - create new experiment with same scenario/strategy
-    setSnackbar({
-      open: true,
-      message: "Rerun functionality coming soon!",
-      severity: "success",
-    });
+  const handleRerun = async () => {
+    if (!selectedResult?.experiment_id) return;
+    try {
+      await experimentsAPI.rerun(selectedResult.experiment_id);
+      setSnackbar({
+        open: true,
+        message: "Experiment rerun queued successfully!",
+        severity: "success",
+      });
+    } catch {
+      setSnackbar({
+        open: true,
+        message: "Failed to queue rerun.",
+        severity: "error",
+      });
+    }
   };
 
   const handleDownload = async () => {
     if (!selectedResult) return;
     try {
-      // TODO: Implement proper download endpoint
+      const response = await resultsAPI.exportBundle(selectedResult.id);
+      downloadBlob(response.data, `result-${selectedResult.id}.zip`);
       setSnackbar({
         open: true,
-        message: "Download functionality coming soon!",
+        message: "Result bundle downloaded.",
         severity: "success",
       });
     } catch {
@@ -184,7 +197,7 @@ const ResultsPage: React.FC = () => {
             {results.map((r) => {
               const computedMetrics = getComputedMetrics(r);
               return (
-                <Grid item xs={12} sm={6} md={4} key={r.id}>
+                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={r.id}>
                   <Card
                     sx={{
                       borderRadius: 1,
@@ -412,7 +425,7 @@ const ResultsPage: React.FC = () => {
                 <Stack direction="row" spacing={2} mb={3}>
                   <Chip
                     label={`Success Rate: ${(
-                      getComputedMetrics(selectedResult)?.success_rate * 100
+                      (getComputedMetrics(selectedResult)?.success_rate ?? 0) * 100
                     ).toFixed(1)}%`}
                     size="small"
                     color="info"
@@ -427,7 +440,7 @@ const ResultsPage: React.FC = () => {
                   <Chip
                     label={`Energy: ${getComputedMetrics(
                       selectedResult
-                    )?.consumed_joules.toFixed(0)}J`}
+                    )?.consumed_joules?.toFixed?.(0) ?? "-"}J`}
                     size="small"
                     color="info"
                   />

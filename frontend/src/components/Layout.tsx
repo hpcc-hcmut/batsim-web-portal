@@ -25,6 +25,7 @@ import {
   Settings,
   Code,
   Science,
+  ViewModule,
   Assessment,
   Analytics,
   AccountCircle,
@@ -47,6 +48,7 @@ const menuItems: MenuItem[] = [
   { text: "Scenarios", icon: <Settings />, path: "/scenarios" },
   { text: "Strategies", icon: <Code />, path: "/strategies" },
   { text: "Experiments", icon: <Science />, path: "/experiments" },
+  { text: "Campaigns", icon: <ViewModule />, path: "/campaigns" },
   { text: "Results", icon: <Assessment />, path: "/results" },
   { text: "Analytics", icon: <Analytics />, path: "/analytics" },
 ];

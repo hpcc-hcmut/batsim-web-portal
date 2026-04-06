@@ -59,6 +59,23 @@ export interface Scenario {
   creator_username?: string;
 }
 
+export interface Campaign {
+  id: number;
+  name: string;
+  description?: string;
+  notes?: string;
+  status: string;
+  matrix_definition_json?: string;
+  created_by?: number;
+  created_at: string;
+  updated_at?: string;
+  total_runs?: number;
+  completed_runs?: number;
+  failed_runs?: number;
+  running_runs?: number;
+  pending_runs?: number;
+}
+
 export interface Strategy {
   id: number;
   name: string;
@@ -83,13 +100,22 @@ export interface Experiment {
   strategy_id: number;
   status:
     | "pending"
+    | "preparing"
     | "running"
-    | "paused"
+    | "parsing"
     | "completed"
     | "failed"
-    | "cancelled";
-  batsim_container_id?: string;
-  pybatsim_container_id?: string;
+    | "cancelled"
+    | "queued";
+  run_uuid?: string;
+  seed?: number;
+  parameter_json?: string;
+  execution_backend?: string;
+  batsim_version?: string;
+  scheduler_version?: string;
+  strategy_commit_hash?: string;
+  platform_checksum?: string;
+  workload_checksum?: string;
   start_time?: string;
   end_time?: string;
   estimated_duration?: number;
@@ -97,7 +123,17 @@ export interface Experiment {
   completed_jobs: number;
   progress_percentage: number;
   config?: string;
+  status_detail?: string;
+  failure_reason?: string;
   simulation_dir?: string;
+  manifest_path?: string;
+  stdout_log_path?: string;
+  stderr_log_path?: string;
+  batsim_stdout_log_path?: string;
+  batsim_stderr_log_path?: string;
+  scheduler_stdout_log_path?: string;
+  scheduler_stderr_log_path?: string;
+  exit_code?: number;
   batsim_logs?: string;
   pybatsim_logs?: string;
   created_by?: number;
@@ -121,10 +157,19 @@ export interface Result {
   resource_utilization?: number;
   config?: string;
   metrics?: string;
+  metric_json?: string;
+  summary_json?: string;
   logs?: string;
   result_file_path?: string;
   log_file_path?: string;
+  jobs_csv_path?: string;
+  schedule_csv_path?: string;
+  raw_output_dir?: string;
   created_at: string;
+  ingested_at?: string;
+  parser_version?: string;
+  metric_version?: string;
+  parsing_warnings?: string;
   experiment_name?: string;
   scenario_name?: string;
   strategy_name?: string;
@@ -148,6 +193,13 @@ export interface RegisterData {
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+}
+
+export interface ExperimentLogs {
+  batsim_stdout?: string | null;
+  batsim_stderr?: string | null;
+  scheduler_stdout?: string | null;
+  scheduler_stderr?: string | null;
 }
 
 // Create axios instance
@@ -271,6 +323,33 @@ export const scenariosAPI = {
     api.delete(`/scenarios/${id}`),
 };
 
+export const campaignsAPI = {
+  getAll: (): Promise<AxiosResponse<Campaign[]>> => api.get("/campaigns"),
+  getById: (id: number): Promise<AxiosResponse<Campaign>> =>
+    api.get(`/campaigns/${id}`),
+  create: (data: {
+    name: string;
+    description?: string;
+    notes?: string;
+    scenario_ids: number[];
+    strategy_ids: number[];
+    seeds: number[];
+    parameter_variants?: Record<string, any>[];
+  }): Promise<AxiosResponse<Campaign>> => api.post("/campaigns", data),
+  getExperiments: (id: number): Promise<AxiosResponse<Experiment[]>> =>
+    api.get(`/campaigns/${id}/experiments`),
+  start: (id: number): Promise<AxiosResponse<{ message: string }>> =>
+    api.post(`/campaigns/${id}/start`),
+  stop: (id: number): Promise<AxiosResponse<{ message: string }>> =>
+    api.post(`/campaigns/${id}/stop`),
+  retryFailed: (
+    id: number
+  ): Promise<AxiosResponse<{ message: string; retried: number }>> =>
+    api.post(`/campaigns/${id}/retry-failed`),
+  exportBundle: (id: number): Promise<AxiosResponse<Blob>> =>
+    api.get(`/campaigns/${id}/export`, { responseType: "blob" }),
+};
+
 // Strategies API
 export const strategiesAPI = {
   getAll: (params?: {
@@ -328,11 +407,23 @@ export const experimentsAPI = {
     api.post(`/experiments/${id}/start`),
   stop: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.post(`/experiments/${id}/stop`),
+  clone: (id: number): Promise<AxiosResponse<Experiment>> =>
+    api.post(`/experiments/${id}/clone`),
+  rerun: (id: number): Promise<AxiosResponse<Experiment>> =>
+    api.post(`/experiments/${id}/rerun`),
+  getLogs: (id: number): Promise<AxiosResponse<ExperimentLogs>> =>
+    api.get(`/experiments/${id}/logs`),
+  getManifest: (id: number): Promise<AxiosResponse<Record<string, any>>> =>
+    api.get(`/experiments/${id}/manifest`),
+  downloadArtifacts: (id: number): Promise<AxiosResponse<Blob>> =>
+    api.get(`/experiments/${id}/artifacts`, { responseType: "blob" }),
   getStatus: (
     id: number
   ): Promise<
     AxiosResponse<{
       status: string;
+      status_detail?: string;
+      failure_reason?: string;
       progress_percentage: number;
       completed_jobs: number;
       total_jobs: number;
@@ -350,12 +441,16 @@ export const resultsAPI = {
   }): Promise<AxiosResponse<Result[]>> => api.get("/results", { params }),
   getById: (id: number): Promise<AxiosResponse<Result>> =>
     api.get(`/results/${id}`),
-  getByExperiment: (experimentId: number): Promise<AxiosResponse<Result[]>> =>
-    api.get(`/results/experiment/${experimentId}`),
+  getByExperiment: (experimentId: number): Promise<AxiosResponse<Result>> =>
+    api.get(`/results/by-experiment/${experimentId}`),
   getAnalytics: (params?: {
     start_date?: string;
     end_date?: string;
   }): Promise<AxiosResponse<any>> => api.get("/results/analytics", { params }),
+  ingest: (experimentId: number): Promise<AxiosResponse<Result>> =>
+    api.post(`/results/ingest/${experimentId}`),
+  exportBundle: (resultId: number): Promise<AxiosResponse<Blob>> =>
+    api.get(`/results/${resultId}/export`, { responseType: "blob" }),
   delete: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.delete(`/results/${id}`),
 };
@@ -370,3 +465,14 @@ export const systemAPI = {
 };
 
 export default api;
+
+export const downloadBlob = (blob: Blob, filename: string) => {
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(href);
+};

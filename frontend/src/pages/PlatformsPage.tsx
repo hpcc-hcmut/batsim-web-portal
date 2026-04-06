@@ -21,17 +21,16 @@ import {
   FormHelperText,
   Snackbar,
   Alert,
-  Divider,
-  Tooltip,
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Divider,
+  Tooltip,
 } from "@mui/material";
 import {
   Edit,
   Delete,
   Close,
-  UploadFile,
   Download,
   ExpandMore,
   Description,
@@ -196,7 +195,7 @@ const PlatformsPage: React.FC = () => {
     if (!selectedPlatform) return;
     try {
       const res = await platformsAPI.download(selectedPlatform.id);
-      const { file_path, file_name } = res.data;
+      const { file_path } = res.data;
       // For demo: just open the file path (in real app, use a proper download endpoint)
       window.open(file_path, "_blank");
     } catch {
@@ -246,7 +245,7 @@ const PlatformsPage: React.FC = () => {
         ) : (
           <Grid container spacing={3}>
             {platforms.map((p) => (
-              <Grid item xs={12} sm={6} md={4} key={p.id}>
+              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={p.id}>
                 <Card
                   sx={{
                     borderRadius: 1,

@@ -8,7 +8,6 @@ import {
   CircularProgress,
   Stack,
   Chip,
-  Paper,
   Divider,
   TextField,
   Button,
@@ -19,7 +18,6 @@ import {
   TrendingUp,
   Speed,
   CheckCircle,
-  Error,
   Schedule,
   Storage,
   Science,
@@ -153,7 +151,7 @@ const AnalyticsPage: React.FC = () => {
         <>
           {/* Key Metrics */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(26,32,44,0.98)" }}>
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2}>
@@ -175,7 +173,7 @@ const AnalyticsPage: React.FC = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2}>
@@ -197,7 +195,7 @@ const AnalyticsPage: React.FC = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2}>
@@ -219,7 +217,7 @@ const AnalyticsPage: React.FC = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} sm={6} md={3}>
+            <Grid size={{ xs: 12, sm: 6, md: 3 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2}>
@@ -244,7 +242,7 @@ const AnalyticsPage: React.FC = () => {
 
           {/* Performance Metrics */}
           <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Typography
@@ -347,7 +345,7 @@ const AnalyticsPage: React.FC = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Typography
@@ -417,7 +415,7 @@ const AnalyticsPage: React.FC = () => {
 
           {/* Top Strategies and Scenarios */}
           <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Typography
@@ -429,7 +427,7 @@ const AnalyticsPage: React.FC = () => {
                   </Typography>
                   {analyticsData.top_strategies.length > 0 ? (
                     <Stack spacing={1}>
-                      {analyticsData.top_strategies.map((strategy, index) => (
+                      {analyticsData.top_strategies.map((strategy) => (
                         <Box
                           key={strategy.name}
                           sx={{
@@ -461,7 +459,7 @@ const AnalyticsPage: React.FC = () => {
               </Card>
             </Grid>
 
-            <Grid item xs={12} md={6}>
+            <Grid size={{ xs: 12, md: 6 }}>
               <Card sx={{ borderRadius: 1, background: "rgba(24,34,53,0.98)" }}>
                 <CardContent>
                   <Typography
@@ -473,7 +471,7 @@ const AnalyticsPage: React.FC = () => {
                   </Typography>
                   {analyticsData.top_scenarios.length > 0 ? (
                     <Stack spacing={1}>
-                      {analyticsData.top_scenarios.map((scenario, index) => (
+                      {analyticsData.top_scenarios.map((scenario) => (
                         <Box
                           key={scenario.name}
                           sx={{

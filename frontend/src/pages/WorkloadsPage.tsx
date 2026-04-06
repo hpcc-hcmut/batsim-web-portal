@@ -21,7 +21,6 @@ import {
   FormHelperText,
   Snackbar,
   Alert,
-  Collapse,
   Divider,
   Tooltip,
   Accordion,
@@ -184,7 +183,7 @@ const WorkloadsPage: React.FC = () => {
     if (!selectedWorkload) return;
     try {
       const res = await workloadsAPI.download(selectedWorkload.id);
-      const { file_path, file_name } = res.data;
+      const { file_path } = res.data;
       // For demo: just open the file path (in real app, use a proper download endpoint)
       window.open(file_path, "_blank");
     } catch {
@@ -235,7 +234,7 @@ const WorkloadsPage: React.FC = () => {
         ) : (
           <Grid container spacing={3}>
             {workloads.map((w) => (
-              <Grid item xs={12} sm={6} md={4} key={w.id}>
+              <Grid size={{ xs: 12, sm: 6, md: 4 }} key={w.id}>
                 <Card
                   sx={{
                     borderRadius: 1,

@@ -3,6 +3,7 @@ from .workload import Workload, WorkloadCreate, WorkloadUpdate, WorkloadWithCrea
 from .platform import Platform, PlatformCreate, PlatformUpdate, PlatformWithCreator
 from .scenario import Scenario, ScenarioCreate, ScenarioUpdate, ScenarioWithDetails
 from .strategy import Strategy, StrategyCreate, StrategyUpdate, StrategyWithCreator
+from .campaign import Campaign, CampaignCreate, CampaignUpdate, CampaignWithSummary
 from .experiment import (
     Experiment,
     ExperimentCreate,
@@ -34,6 +35,10 @@ __all__ = [
     "StrategyCreate",
     "StrategyUpdate",
     "StrategyWithCreator",
+    "Campaign",
+    "CampaignCreate",
+    "CampaignUpdate",
+    "CampaignWithSummary",
     "Experiment",
     "ExperimentCreate",
     "ExperimentUpdate",
