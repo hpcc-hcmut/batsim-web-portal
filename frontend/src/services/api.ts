@@ -27,6 +27,7 @@ export interface Workload {
   nb_res?: number;
   jobs?: string; // JSON string
   profiles?: string; // JSON string
+  version?: number;
 }
 
 export interface Platform {
@@ -43,6 +44,7 @@ export interface Platform {
   nb_hosts?: number;
   nb_clusters?: number;
   platform_config?: string; // XML string
+  version?: number;
 }
 
 export interface Scenario {
@@ -202,9 +204,13 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    if (
+      error.response?.status === 401 &&
+      !error.config?.url?.includes("/auth/")
+    ) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   }
@@ -228,11 +234,11 @@ export const workloadsAPI = {
   getAll: (params?: {
     skip?: number;
     limit?: number;
-  }): Promise<AxiosResponse<Workload[]>> => api.get("/workloads", { params }),
+  }): Promise<AxiosResponse<Workload[]>> => api.get("/workloads/", { params }),
   getById: (id: number): Promise<AxiosResponse<Workload>> =>
     api.get(`/workloads/${id}`),
   create: (formData: FormData): Promise<AxiosResponse<Workload>> =>
-    api.post("/workloads", formData, {
+    api.post("/workloads/", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
   update: (
@@ -252,11 +258,11 @@ export const platformsAPI = {
   getAll: (params?: {
     skip?: number;
     limit?: number;
-  }): Promise<AxiosResponse<Platform[]>> => api.get("/platforms", { params }),
+  }): Promise<AxiosResponse<Platform[]>> => api.get("/platforms/", { params }),
   getById: (id: number): Promise<AxiosResponse<Platform>> =>
     api.get(`/platforms/${id}`),
   create: (formData: FormData): Promise<AxiosResponse<Platform>> =>
-    api.post("/platforms", formData, {
+    api.post("/platforms/", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
   update: (
@@ -283,12 +289,12 @@ export const scenariosAPI = {
   getAll: (params?: {
     skip?: number;
     limit?: number;
-  }): Promise<AxiosResponse<Scenario[]>> => api.get("/scenarios", { params }),
+  }): Promise<AxiosResponse<Scenario[]>> => api.get("/scenarios/", { params }),
   getById: (id: number): Promise<AxiosResponse<Scenario>> =>
     api.get(`/scenarios/${id}`),
   create: (
     data: Omit<Scenario, "id" | "created_at" | "updated_at">
-  ): Promise<AxiosResponse<Scenario>> => api.post("/scenarios", data),
+  ): Promise<AxiosResponse<Scenario>> => api.post("/scenarios/", data),
   update: (
     id: number,
     data: Partial<Scenario>
@@ -302,11 +308,11 @@ export const strategiesAPI = {
   getAll: (params?: {
     skip?: number;
     limit?: number;
-  }): Promise<AxiosResponse<Strategy[]>> => api.get("/strategies", { params }),
+  }): Promise<AxiosResponse<Strategy[]>> => api.get("/strategies/", { params }),
   getById: (id: number): Promise<AxiosResponse<Strategy>> =>
     api.get(`/strategies/${id}`),
   create: (formData: FormData): Promise<AxiosResponse<Strategy>> =>
-    api.post("/strategies", formData, {
+    api.post("/strategies/", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
   update: (
@@ -334,7 +340,7 @@ export const experimentsAPI = {
     skip?: number;
     limit?: number;
   }): Promise<AxiosResponse<Experiment[]>> =>
-    api.get("/experiments", { params }),
+    api.get("/experiments/", { params }),
   getById: (id: number): Promise<AxiosResponse<Experiment>> =>
     api.get(`/experiments/${id}`),
   create: (data: {
@@ -345,13 +351,13 @@ export const experimentsAPI = {
     config?: any;
     seed?: number;
     params?: Record<string, any>;
-  }): Promise<AxiosResponse<Experiment>> => api.post("/experiments", data),
+  }): Promise<AxiosResponse<Experiment>> => api.post("/experiments/", data),
   getQueue: (): Promise<AxiosResponse<{
     running: number;
     queued: number;
     max_concurrent: number;
     available_slots: number;
-  }>> => api.get("/experiments/queue"),
+  }>> => api.get("/experiments/queue/"),
   update: (
     id: number,
     data: Partial<Experiment>
@@ -391,7 +397,7 @@ export const resultsAPI = {
   getAll: (params?: {
     skip?: number;
     limit?: number;
-  }): Promise<AxiosResponse<Result[]>> => api.get("/results", { params }),
+  }): Promise<AxiosResponse<Result[]>> => api.get("/results/", { params }),
   getById: (id: number): Promise<AxiosResponse<Result>> =>
     api.get(`/results/${id}`),
   getByExperiment: (experimentId: number): Promise<AxiosResponse<Result[]>> =>
