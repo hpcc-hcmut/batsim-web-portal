@@ -22,6 +22,8 @@ const LoginPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   const navigate = useNavigate();
   const { login, register, isLoading, error, isAuthenticated, clearError } =
     useAuthStore();
@@ -34,6 +36,14 @@ const LoginPage: React.FC = () => {
 
   useEffect(() => {
     clearError();
+    try {
+      if (sessionStorage.getItem("session_expired") === "1") {
+        setSessionExpired(true);
+        sessionStorage.removeItem("session_expired");
+      }
+    } catch {
+      // ignore storage errors
+    }
   }, [clearError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -115,6 +125,12 @@ const LoginPage: React.FC = () => {
               ? "Create your account to access BatSim Portal"
               : "Sign in to access BatSim Portal"}
           </Typography>
+
+          {sessionExpired && !error && (
+            <Alert severity="info" sx={{ width: "100%", mb: 2 }}>
+              Your session expired. Please sign in again.
+            </Alert>
+          )}
 
           {error && (
             <Alert severity="error" sx={{ width: "100%", mb: 2 }}>

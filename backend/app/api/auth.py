@@ -27,20 +27,14 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    print(f"[DEBUG] Token received: {token[:20]}...")  # Debug log
     username = verify_token(token)
-    print(f"[DEBUG] Username from token: {username}")  # Debug log
-
     if username is None:
-        print("[DEBUG] Token verification failed")  # Debug log
         raise credentials_exception
 
     user = db.query(User).filter(User.username == username).first()
     if user is None:
-        print(f"[DEBUG] User not found for username: {username}")  # Debug log
         raise credentials_exception
 
-    print(f"[DEBUG] User authenticated: {user.username}")  # Debug log
     return user
 
 

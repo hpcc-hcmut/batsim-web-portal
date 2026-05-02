@@ -186,10 +186,23 @@ const api = axios.create({
   },
 });
 
+// Read token from the persisted Zustand blob without importing the store
+// (avoids a circular import: api.ts <-> authStore.ts).
+function readPersistedToken(): string | null {
+  try {
+    const raw = localStorage.getItem("auth-storage");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed?.state?.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("token");
+    const token = readPersistedToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -208,8 +221,25 @@ api.interceptors.response.use(
       error.response?.status === 401 &&
       !error.config?.url?.includes("/auth/")
     ) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+      // Already on /login? Don't loop — just propagate the error.
+      if (window.location.pathname.startsWith("/login")) {
+        return Promise.reject(error);
+      }
+      // Clear EVERY auth-state key (raw legacy + zustand persist blob)
+      // so the next page load doesn't see stale isAuthenticated: true.
+      try {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("auth-storage");
+      } catch {
+        // ignore
+      }
+      // Flag so LoginPage can show "Session expired" once.
+      try {
+        sessionStorage.setItem("session_expired", "1");
+      } catch {
+        // ignore
+      }
       window.location.href = "/login";
     }
     return Promise.reject(error);

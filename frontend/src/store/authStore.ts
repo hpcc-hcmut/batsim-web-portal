@@ -34,10 +34,9 @@ const useAuthStore = create<AuthState>()(
           const response = await authAPI.login(credentials);
           const { access_token } = response.data;
 
-          // Store token in localStorage first
-          localStorage.setItem("token", access_token);
+          // Set token in store first so the request interceptor picks it up for getMe.
+          set({ token: access_token });
 
-          // Get user info
           const userResponse = await authAPI.getMe();
           const user = userResponse.data;
 
@@ -49,13 +48,13 @@ const useAuthStore = create<AuthState>()(
             error: null,
           });
 
-          // Store user in localStorage
-          localStorage.setItem("user", JSON.stringify(user));
-
           return { success: true };
         } catch (error: any) {
           const errorMessage = error.response?.data?.detail || "Login failed";
           set({
+            token: null,
+            user: null,
+            isAuthenticated: false,
             isLoading: false,
             error: errorMessage,
           });
@@ -81,8 +80,6 @@ const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
         set({
           user: null,
           token: null,
@@ -90,25 +87,34 @@ const useAuthStore = create<AuthState>()(
           isLoading: false,
           error: null,
         });
+        // Belt-and-suspenders: drop legacy raw keys + the persist blob in case
+        // version-skewed state is left behind from older builds.
+        try {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+          localStorage.removeItem("auth-storage");
+        } catch {
+          // ignore storage errors (private mode etc.)
+        }
       },
 
       checkAuth: async () => {
-        const token = localStorage.getItem("token");
-        const userStr = localStorage.getItem("user");
-
-        if (token && userStr) {
-          try {
-            const user = JSON.parse(userStr) as User;
-            const userResponse = await authAPI.getMe();
-            set({
-              user: userResponse.data,
-              token,
-              isAuthenticated: true,
-              isLoading: false,
-            });
-          } catch {
-            get().logout();
-          }
+        const { token } = get();
+        if (!token) {
+          set({ isAuthenticated: false, user: null, isLoading: false });
+          return;
+        }
+        set({ isLoading: true });
+        try {
+          const userResponse = await authAPI.getMe();
+          set({
+            user: userResponse.data,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+        } catch {
+          // token invalid/expired — clear all auth state
+          get().logout();
         }
       },
 
