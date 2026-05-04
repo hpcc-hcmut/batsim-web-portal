@@ -49,6 +49,30 @@ class ContainerManager:
         """Resolve to absolute path with forward slashes (Docker on Windows)."""
         return os.path.abspath(path).replace("\\", "/")
 
+    @staticmethod
+    def _bind_source(path: str) -> str:
+        """Resolve to a host-visible absolute path for use as a Docker bind source.
+
+        When the orchestrator runs inside a container (DooD), paths under the
+        container-side STORAGE_PATH (e.g. /app/storage/...) don't exist on the
+        host filesystem and the host Docker daemon would auto-create empty
+        directories instead of mounting our real data. If HOST_STORAGE_PATH is
+        set, rewrite paths under STORAGE_PATH to the host-side prefix so the
+        daemon mounts the correct directory.
+
+        When HOST_STORAGE_PATH is unset (native/hybrid mode), behavior is
+        identical to _abs() — paths are used as-is.
+        """
+        abs_path = os.path.abspath(path).replace("\\", "/")
+        host_storage = os.environ.get("HOST_STORAGE_PATH", "").strip()
+        if not host_storage:
+            return abs_path
+        container_prefix = os.path.abspath(settings.STORAGE_PATH).replace("\\", "/")
+        if abs_path.startswith(container_prefix + "/") or abs_path == container_prefix:
+            host_norm = host_storage.replace("\\", "/").rstrip("/")
+            return host_norm + abs_path[len(container_prefix):]
+        return abs_path
+
     def start_pybatsim(self, strategy_path: str, exp_dir: str) -> str:
         """Start PyBatsim container (BINDS tcp://*:28000 — must start first).
 
@@ -59,7 +83,7 @@ class ContainerManager:
         Returns:
             Container ID
         """
-        abs_exp_dir = self._abs(exp_dir)
+        abs_exp_dir = self._bind_source(exp_dir)
         strategy_filename = os.path.basename(strategy_path)
 
         self.pybatsim_container = self.client.containers.run(
@@ -97,7 +121,7 @@ class ContainerManager:
         """
         workload_filename = os.path.basename(workload_path)
         platform_filename = os.path.basename(platform_path)
-        abs_exp_dir = self._abs(exp_dir)
+        abs_exp_dir = self._bind_source(exp_dir)
 
         # BatSim image has batsim as ENTRYPOINT — pass args as list to handle spaces
         command = [

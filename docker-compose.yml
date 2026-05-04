@@ -6,14 +6,22 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      # Bind ./backend/storage so the path exists on the HOST filesystem too,
+      # which is required for Docker-out-of-Docker bind mounts to sibling
+      # batsim/pybatsim containers spawned by the orchestrator.
       - ./backend:/app
-      - backend-storage:/app/storage
+      - ./backend/storage:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - ./backend/.env
     environment:
       - STORAGE_PATH=/app/storage
       - SIMULATION_DATA_PATH=/app/storage/experiments
+      # Used by the orchestrator to translate container-side paths
+      # (/app/storage/...) to host-side absolute paths before passing them as
+      # bind-mount sources to the host Docker daemon. Override in a .env at
+      # this directory if PWD substitution doesn't resolve correctly.
+      - HOST_STORAGE_PATH=${HOST_STORAGE_PATH:-${PWD}/backend/storage}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -68,6 +76,5 @@ services:
     restart: unless-stopped
 
 volumes:
-  backend-storage:
   prometheus-data:
   grafana-data:
