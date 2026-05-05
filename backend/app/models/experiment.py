@@ -46,8 +46,10 @@ class Experiment(Base):
     params = Column(Text)  # JSON string of additional simulation parameters
     # Execution details
     simulation_dir = Column(String)  # Directory where simulation files are stored
-    batsim_logs = Column(Text)  # Batsim execution logs
-    pybatsim_logs = Column(Text)  # Pybatsim execution logs
+    batsim_logs = Column(Text)  # Batsim stdout logs (repurposed from merged; rename in Phase 9)
+    batsim_stderr = Column(Text)  # Batsim stderr logs (added in Task 7.6 — 4-stream split)
+    pybatsim_logs = Column(Text)  # Pybatsim stdout logs (repurposed from merged; rename in Phase 9)
+    pybatsim_stderr = Column(Text)  # Pybatsim stderr logs (added in Task 7.6 — 4-stream split)
     error_message = Column(Text)  # Error details on failure
     container_network = Column(String)  # Docker network name for this experiment
 

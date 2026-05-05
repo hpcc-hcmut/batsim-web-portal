@@ -214,33 +214,69 @@ def _update_experiment_status(
 
 
 def _save_logs(db: Session, experiment_id: int, manager: ContainerManager):
-    """Save container logs to DB (truncated to 50KB each)."""
-    max_log_bytes = 50 * 1024
-    logs = manager.get_logs(tail=0)
+    """Capture 4 log streams (batsim stdout/stderr, pybatsim stdout/stderr).
+
+    DB caps: stdout 50 KB tail, stderr 100 KB tail (errors live near the end).
+    Disk: writes 4 files (batsim.stdout.log, batsim.stderr.log,
+          pybatsim.stdout.log, pybatsim.stderr.log).
+    Legacy batsim.log / pybatsim.log are NOT written (existing files left alone).
+    ANSI escape sequences are stripped by ContainerManager.get_logs().
+    """
+    max_stdout_bytes = 50 * 1024   # 50 KB cap for stdout
+    max_stderr_bytes = 100 * 1024  # 100 KB cap for stderr (errors are more diagnostic)
+
+    # Fetch 4 separate streams (tail=0 = all lines)
+    batsim_stdout_logs = manager.get_logs(container_type="batsim", tail=0, stream="stdout")
+    batsim_stderr_logs = manager.get_logs(container_type="batsim", tail=0, stream="stderr")
+    pybatsim_stdout_logs = manager.get_logs(container_type="pybatsim", tail=0, stream="stdout")
+    pybatsim_stderr_logs = manager.get_logs(container_type="pybatsim", tail=0, stream="stderr")
+
+    batsim_out = batsim_stdout_logs.get("batsim_logs", "")
+    batsim_err = batsim_stderr_logs.get("batsim_logs", "")
+    pybatsim_out = pybatsim_stdout_logs.get("pybatsim_logs", "")
+    pybatsim_err = pybatsim_stderr_logs.get("pybatsim_logs", "")
 
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if not exp:
         return
 
-    batsim_logs = logs.get("batsim_logs", "")
-    pybatsim_logs = logs.get("pybatsim_logs", "")
+    # Truncate for DB storage — keep the TAIL (errors typically appear near end)
+    if len(batsim_out) > max_stdout_bytes:
+        batsim_out_db = "... (truncated) ...\n" + batsim_out[-max_stdout_bytes:]
+    else:
+        batsim_out_db = batsim_out
 
-    # Truncate for DB storage
-    if len(batsim_logs) > max_log_bytes:
-        batsim_logs = "... (truncated) ...\n" + batsim_logs[-max_log_bytes:]
-    if len(pybatsim_logs) > max_log_bytes:
-        pybatsim_logs = "... (truncated) ...\n" + pybatsim_logs[-max_log_bytes:]
+    if len(batsim_err) > max_stderr_bytes:
+        batsim_err_db = "... (truncated) ...\n" + batsim_err[-max_stderr_bytes:]
+    else:
+        batsim_err_db = batsim_err
 
-    exp.batsim_logs = batsim_logs
-    exp.pybatsim_logs = pybatsim_logs
+    if len(pybatsim_out) > max_stdout_bytes:
+        pybatsim_out_db = "... (truncated) ...\n" + pybatsim_out[-max_stdout_bytes:]
+    else:
+        pybatsim_out_db = pybatsim_out
+
+    if len(pybatsim_err) > max_stderr_bytes:
+        pybatsim_err_db = "... (truncated) ...\n" + pybatsim_err[-max_stderr_bytes:]
+    else:
+        pybatsim_err_db = pybatsim_err
+
+    exp.batsim_logs = batsim_out_db
+    exp.batsim_stderr = batsim_err_db
+    exp.pybatsim_logs = pybatsim_out_db
+    exp.pybatsim_stderr = pybatsim_err_db
     db.commit()
 
-    # Also save full logs to disk
+    # Write 4 disk files (full content, no DB cap applied)
     exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(experiment_id))
     os.makedirs(exp_dir, exist_ok=True)
-    for name, content in [("batsim.log", logs.get("batsim_logs", "")),
-                          ("pybatsim.log", logs.get("pybatsim_logs", ""))]:
-        log_path = os.path.join(exp_dir, name)
+    for filename, content in [
+        ("batsim.stdout.log", batsim_out),
+        ("batsim.stderr.log", batsim_err),
+        ("pybatsim.stdout.log", pybatsim_out),
+        ("pybatsim.stderr.log", pybatsim_err),
+    ]:
+        log_path = os.path.join(exp_dir, filename)
         with open(log_path, "w", encoding="utf-8") as f:
             f.write(content)
 

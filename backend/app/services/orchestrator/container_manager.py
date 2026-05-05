@@ -6,6 +6,7 @@ All Docker operations are synchronous (meant to run in a background thread).
 
 import logging
 import os
+import re
 import time
 
 import docker
@@ -18,6 +19,17 @@ logger = logging.getLogger(__name__)
 
 # Label used to identify all containers/networks managed by this app
 APP_LABEL = "batsim-web-portal"
+
+# ANSI escape sequence regex for stripping color codes from container logs.
+# BatSim/PyBatsim may emit these when the process detects a TTY; inside a Docker
+# pipe it's usually disabled but not guaranteed. Strip on capture so stored logs
+# and endpoint responses are always clean plain text.
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI color/control escape sequences from text."""
+    return _ANSI_RE.sub('', text)
 
 
 class ContainerManager:
@@ -176,34 +188,52 @@ class ContainerManager:
         )
         return {"batsim_exit": batsim_exit, "pybatsim_exit": pybatsim_exit}
 
-    def get_logs(self, container_type: str = "both", tail: int = 500) -> dict:
+    def get_logs(
+        self,
+        container_type: str = "both",
+        tail: int = 500,
+        stream: str = "merged",
+    ) -> dict:
         """Fetch logs from containers.
 
         Args:
             container_type: "batsim", "pybatsim", or "both"
             tail: Number of lines to fetch (0 = all)
+            stream: "stdout", "stderr", or "merged" (default — backwards compat).
+                    Controls which Docker log stream is captured.
+                    "merged" returns stdout+stderr combined (legacy behavior).
 
         Returns:
             Dict with 'batsim_logs' and/or 'pybatsim_logs' keys.
+            ANSI escape sequences are stripped from all returned strings.
         """
         result = {}
-        kwargs = {"tail": tail} if tail > 0 else {}
+        tail_kwargs = {"tail": tail} if tail > 0 else {}
+
+        # Map stream param to Docker SDK stdout/stderr kwargs
+        if stream == "stdout":
+            stream_kwargs = {"stdout": True, "stderr": False}
+        elif stream == "stderr":
+            stream_kwargs = {"stdout": False, "stderr": True}
+        else:
+            # "merged" — original behavior: both streams interleaved
+            stream_kwargs = {"stdout": True, "stderr": True}
+
+        kwargs = {**tail_kwargs, **stream_kwargs}
 
         if container_type in ("batsim", "both") and self.batsim_container:
             try:
                 self.batsim_container.reload()
-                result["batsim_logs"] = self.batsim_container.logs(**kwargs).decode(
-                    "utf-8", errors="replace"
-                )
+                raw = self.batsim_container.logs(**kwargs).decode("utf-8", errors="replace")
+                result["batsim_logs"] = strip_ansi(raw)
             except (NotFound, APIError):
                 result["batsim_logs"] = ""
 
         if container_type in ("pybatsim", "both") and self.pybatsim_container:
             try:
                 self.pybatsim_container.reload()
-                result["pybatsim_logs"] = self.pybatsim_container.logs(**kwargs).decode(
-                    "utf-8", errors="replace"
-                )
+                raw = self.pybatsim_container.logs(**kwargs).decode("utf-8", errors="replace")
+                result["pybatsim_logs"] = strip_ansi(raw)
             except (NotFound, APIError):
                 result["pybatsim_logs"] = ""
 

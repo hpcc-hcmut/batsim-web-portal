@@ -1,7 +1,7 @@
 """Experiment API endpoints — CRUD, lifecycle, and simulation orchestration."""
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 import json
 import os
@@ -282,13 +282,176 @@ def get_experiment_status(
     }
 
 
+# ---------------------------------------------------------------------------
+# Task 7.6 — 4-stream log endpoints
+# ---------------------------------------------------------------------------
+
+# Per-stream hard cap served to clients (5 MB).
+# Prevents sending huge payloads; truncated flag signals the client.
+_STREAM_CAP_BYTES = 5 * 1024 * 1024
+
+# Valid stream names for download endpoint
+_VALID_STREAM_NAMES = frozenset(
+    ["batsim_stdout", "batsim_stderr", "pybatsim_stdout", "pybatsim_stderr"]
+)
+
+# Map stream name → (DB column attr name, disk filename)
+_STREAM_MAP = {
+    "batsim_stdout":   ("batsim_logs",    "batsim.stdout.log"),
+    "batsim_stderr":   ("batsim_stderr",  "batsim.stderr.log"),
+    "pybatsim_stdout": ("pybatsim_logs",  "pybatsim.stdout.log"),
+    "pybatsim_stderr": ("pybatsim_stderr", "pybatsim.stderr.log"),
+}
+
+
+def _get_stream_content(exp: Experiment, stream_name: str) -> tuple[str, int, bool]:
+    """Return (content, full_size_bytes, truncated) for a stored experiment stream.
+
+    Reads DB column first; falls back to disk file if DB value is empty.
+    Applies 5 MB hard cap. full_size_bytes reflects the pre-truncation length.
+    """
+    db_attr, disk_filename = _STREAM_MAP[stream_name]
+    content = getattr(exp, db_attr, None) or ""
+
+    # Fallback: if DB empty and disk file exists, read from disk (capped)
+    if not content and exp.simulation_dir:
+        disk_path = os.path.join(exp.simulation_dir, disk_filename)
+        if os.path.exists(disk_path):
+            try:
+                with open(disk_path, "r", encoding="utf-8", errors="replace") as f:
+                    content = f.read(_STREAM_CAP_BYTES + 1)  # read 1 byte extra to detect overflow
+            except OSError:
+                content = ""
+
+    full_size = len(content.encode("utf-8"))
+    if full_size > _STREAM_CAP_BYTES:
+        # Keep the TAIL (errors appear near end)
+        content = content[-_STREAM_CAP_BYTES:]
+        return content, full_size, True
+    return content, full_size, False
+
+
+@router.get("/{experiment_id}/logs/streams")
+def get_experiment_log_streams(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all 4 log streams for an experiment.
+
+    Returns batsim_stdout, batsim_stderr, pybatsim_stdout, pybatsim_stderr
+    each as { content, truncated, size_bytes }. Content is capped at 5 MB
+    per stream; truncated=true when cap was applied, size_bytes reflects the
+    full pre-cap size.
+
+    When the experiment is RUNNING, content is fetched live from Docker
+    containers (live=true). Otherwise, DB columns are used with disk-file
+    fallback (live=false).
+    """
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Live path: experiment is running — fetch directly from containers
+    if exp.status == ExperimentStatus.RUNNING:
+        from app.services.orchestrator.orchestrator_service import _running_managers, _lock
+        with _lock:
+            manager = _running_managers.get(experiment_id)
+        if manager:
+            try:
+                bs_out_raw = manager.get_logs(container_type="batsim",    tail=0, stream="stdout").get("batsim_logs", "")
+                bs_err_raw = manager.get_logs(container_type="batsim",    tail=0, stream="stderr").get("batsim_logs", "")
+                py_out_raw = manager.get_logs(container_type="pybatsim",  tail=0, stream="stdout").get("pybatsim_logs", "")
+                py_err_raw = manager.get_logs(container_type="pybatsim",  tail=0, stream="stderr").get("pybatsim_logs", "")
+
+                def _cap(text: str):
+                    size = len(text.encode("utf-8"))
+                    if size > _STREAM_CAP_BYTES:
+                        return text[-_STREAM_CAP_BYTES:], size, True
+                    return text, size, False
+
+                bs_out, bs_out_sz, bs_out_trunc = _cap(bs_out_raw)
+                bs_err, bs_err_sz, bs_err_trunc = _cap(bs_err_raw)
+                py_out, py_out_sz, py_out_trunc = _cap(py_out_raw)
+                py_err, py_err_sz, py_err_trunc = _cap(py_err_raw)
+
+                return {
+                    "batsim_stdout":   {"content": bs_out, "truncated": bs_out_trunc, "size_bytes": bs_out_sz},
+                    "batsim_stderr":   {"content": bs_err, "truncated": bs_err_trunc, "size_bytes": bs_err_sz},
+                    "pybatsim_stdout": {"content": py_out, "truncated": py_out_trunc, "size_bytes": py_out_sz},
+                    "pybatsim_stderr": {"content": py_err, "truncated": py_err_trunc, "size_bytes": py_err_sz},
+                    "live": True,
+                }
+            except Exception:
+                pass  # Fall through to stored path on live-fetch error
+
+    # Stored path: read DB columns with disk fallback
+    streams = {}
+    for stream_name in ["batsim_stdout", "batsim_stderr", "pybatsim_stdout", "pybatsim_stderr"]:
+        content, size, truncated = _get_stream_content(exp, stream_name)
+        streams[stream_name] = {"content": content, "truncated": truncated, "size_bytes": size}
+
+    streams["live"] = False
+    return streams
+
+
+@router.get("/{experiment_id}/logs/streams/{stream_name}/download")
+def download_experiment_log_stream(
+    experiment_id: int,
+    stream_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download a single log stream as a plain-text file attachment.
+
+    stream_name must be one of: batsim_stdout, batsim_stderr,
+    pybatsim_stdout, pybatsim_stderr.
+    Content is capped at 5 MB (last 5 MB if truncated).
+    """
+    if stream_name not in _VALID_STREAM_NAMES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid stream name '{stream_name}'. "
+                   f"Must be one of: {sorted(_VALID_STREAM_NAMES)}",
+        )
+
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    content, _size, _truncated = _get_stream_content(exp, stream_name)
+    filename = f"exp-{experiment_id}-{stream_name}.txt"
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Legacy endpoint — kept for backwards compatibility
+# ---------------------------------------------------------------------------
+
 @router.get("/{experiment_id}/logs")
 def get_experiment_logs(
     experiment_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Get experiment logs (from DB or live from containers)."""
+    # DEPRECATED: prefer /logs/streams (4-stream split). Remove in Phase 9.
+    # Returns the original 2-field shape { batsim_logs, pybatsim_logs, live }.
+    # Both fields contain merged stdout+stderr for backwards compat with older
+    # frontend versions and any external scripts that call this endpoint directly.
+    """Get experiment logs — DEPRECATED.
+
+    Returns merged stdout+stderr for batsim and pybatsim as a 2-field shape.
+    Prefer GET /experiments/{id}/logs/streams for the 4-stream split introduced
+    in Task 7.6. This endpoint will be removed in Phase 9.
+    """
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
