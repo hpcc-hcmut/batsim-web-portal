@@ -288,3 +288,31 @@ def cleanup_orphan_containers():
                 pass
     except APIError as e:
         logger.warning(f"Failed to list orphan networks: {e}")
+
+    # Mark stale RUNNING experiments as FAILED.
+    # Backend restart kills the orchestrator coroutine; the experiment row
+    # stays "running" forever even though the containers are gone (or about
+    # to be removed by the loop above). Without this, users see a permanently
+    # stuck experiment with no way to retry except manual SQL.
+    try:
+        from app.core.database import SessionLocal
+        from app.models.experiment import Experiment, ExperimentStatus
+        db = SessionLocal()
+        try:
+            stale = db.query(Experiment).filter(
+                Experiment.status == ExperimentStatus.RUNNING
+            ).all()
+            for exp in stale:
+                exp.status = ExperimentStatus.FAILED
+                exp.error_message = (
+                    exp.error_message or
+                    "Marked failed on backend startup: orchestrator was interrupted "
+                    "(likely by a backend restart) and containers were cleaned up."
+                )
+                logger.info(f"Reset stale RUNNING experiment id={exp.id} -> FAILED")
+            if stale:
+                db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to reset stale running experiments: {e}")
