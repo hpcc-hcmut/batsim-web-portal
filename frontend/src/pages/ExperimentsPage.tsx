@@ -5,7 +5,7 @@ import {
   Card,
   CardContent,
   Grid,
-  CircularProgress,
+  Skeleton,
   Button,
   Stack,
   Chip,
@@ -24,6 +24,7 @@ import {
 } from "../services/api";
 import { ExperimentCreateDialog } from "../components/experiments/experiment-create-dialog";
 import { ExperimentDetailDialog } from "../components/experiments/experiment-detail-dialog";
+import { formatRelativeTime } from "../utils/format-relative-time";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -136,8 +137,18 @@ const ExperimentsPage: React.FC = () => {
 
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="50vh">
-        <CircularProgress />
+      <Box>
+        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
+          <Typography variant="h4" fontWeight={900}>Experiments</Typography>
+          <Button variant="contained" startIcon={<Add />} disabled>New Experiment</Button>
+        </Stack>
+        <Grid container spacing={3}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Grid key={i} size={{ xs: 12, sm: 6, md: 4 }}>
+              <Skeleton variant="rectangular" height={180} sx={{ borderRadius: 1 }} />
+            </Grid>
+          ))}
+        </Grid>
       </Box>
     );
   }
@@ -174,7 +185,7 @@ const ExperimentsPage: React.FC = () => {
                     {e.description || "No description provided."}
                   </Typography>
                   <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" gap={0.5}>
-                    <Chip label={e.created_at?.split("T")[0]} size="small" />
+                    <Chip label={formatRelativeTime(e.created_at)} size="small" />
                     <Chip label={e.scenario_name || "Scenario"} size="small" color="secondary" />
                     <Chip label={e.strategy_name || "Strategy"} size="small" color="secondary" />
                   </Stack>

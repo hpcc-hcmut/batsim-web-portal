@@ -154,7 +154,10 @@ const Layout: React.FC = () => {
         display: "flex",
         minHeight: "100vh",
         bgcolor: "background.default",
-        overflowX: "hidden",
+        // overflowX: "clip" prevents horizontal-scroll artifacts at viewport
+        // bottom WITHOUT inducing the implicit overflowY: auto that "hidden"
+        // would (CSS spec quirk). Result: single vertical scrollbar only.
+        overflowX: "clip",
       }}
     >
       <CssBaseline />

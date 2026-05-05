@@ -5,7 +5,7 @@ import {
   Card,
   CardContent,
   Grid,
-  CircularProgress,
+  Skeleton,
   Button,
   Stack,
   Chip,
@@ -28,7 +28,6 @@ import {
   Edit,
   Delete,
   Close,
-  UploadFile,
   Download,
   ExpandMore,
   Description,
@@ -43,6 +42,7 @@ import {
 } from "../services/api";
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
 import FileDropzone from "../components/common/file-dropzone";
+import { formatRelativeTime } from "../utils/format-relative-time";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -222,15 +222,9 @@ const PlatformsPage: React.FC = () => {
   };
 
   return (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: { xs: "column", md: "row" },
-        height: "100%",
-      }}
-    >
+    <Box>
       {/* Platform List */}
-      <Box sx={{ flex: 1, p: 3 }}>
+      <Box>
         <Typography variant="h4" fontWeight={900} gutterBottom>
           Platforms
         </Typography>
@@ -245,16 +239,18 @@ const PlatformsPage: React.FC = () => {
           </Button>
         </Box>
         {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>
-            <CircularProgress color="primary" />
-          </Box>
+          <Grid container spacing={3}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Grid item xs={12} sm={6} md={4} key={i}>
+                <Skeleton variant="rectangular" height={180} sx={{ borderRadius: 1 }} />
+              </Grid>
+            ))}
+          </Grid>
         ) : error ? (
-          <Typography color="error" sx={{ mt: 4 }}>
-            {error}
-          </Typography>
+          <Alert severity="error" sx={{ mt: 4 }}>{error}</Alert>
         ) : platforms.length === 0 ? (
           <Typography color="text.secondary" sx={{ mt: 4 }}>
-            No platforms found.
+            No platforms yet — click Upload New Platform to add one.
           </Typography>
         ) : (
           <Grid container spacing={3}>
@@ -265,11 +261,12 @@ const PlatformsPage: React.FC = () => {
                     borderRadius: 1,
                     background: "rgba(26,32,44,0.98)",
                     height: "100%",
+                    overflow: "hidden",
                     cursor: "pointer",
-                    transition: "all 0.2s ease-in-out",
+                    transition: "transform 150ms ease, box-shadow 150ms ease",
                     "&:hover": {
                       transform: "translateY(-2px)",
-                      boxShadow: "0 8px 25px rgba(0,0,0,0.3)",
+                      boxShadow: "0 8px 24px 0 rgba(0,0,0,0.4)",
                     },
                   }}
                   onClick={() => openDrawer("view", p)}
@@ -282,10 +279,12 @@ const PlatformsPage: React.FC = () => {
                       mb={2}
                     >
                       <Computer sx={{ fontSize: 36, color: "#4a9eff" }} />
-                      <Box>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
                         <Typography
                           variant="h6"
                           fontWeight={900}
+                          noWrap
+                          title={p.name}
                           sx={{ color: "#fff" }}
                         >
                           {p.name}
@@ -312,7 +311,7 @@ const PlatformsPage: React.FC = () => {
                         color="secondary"
                       />
                       <Chip
-                        label={p.created_at?.split("T")[0]}
+                        label={formatRelativeTime(p.created_at)}
                         size="small"
                         color="default"
                       />
@@ -493,9 +492,7 @@ const PlatformsPage: React.FC = () => {
             </Box>
             <ValidationErrorPanel validation={validationResult} />
             {formError && (
-              <Typography color="error" sx={{ mb: 2 }}>
-                {formError}
-              </Typography>
+              <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>
             )}
             <Stack direction="row" spacing={2}>
               <Button
@@ -508,7 +505,9 @@ const PlatformsPage: React.FC = () => {
                 }
                 sx={{ fontWeight: 700, borderRadius: 1 }}
               >
-                {panelMode === "add" ? "Upload" : "Save"}
+                {panelMode === "add"
+                  ? actionLoading ? "Uploading..." : "Upload"
+                  : actionLoading ? "Saving..." : "Save"}
               </Button>
               <Button
                 variant="outlined"
@@ -555,7 +554,7 @@ const PlatformsPage: React.FC = () => {
           open={snackbar.open}
           autoHideDuration={4000}
           onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
-          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         >
           <Alert
             severity={snackbar.severity}

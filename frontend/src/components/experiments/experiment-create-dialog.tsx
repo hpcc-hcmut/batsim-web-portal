@@ -38,8 +38,10 @@ export const ExperimentCreateDialog: React.FC<Props> = ({
     strategy_id: "",
     seed: "",
   });
+  const [submitting, setSubmitting] = useState(false);
 
   const handleCreate = async () => {
+    setSubmitting(true);
     try {
       await experimentsAPI.create({
         name: formData.name,
@@ -54,6 +56,8 @@ export const ExperimentCreateDialog: React.FC<Props> = ({
       onCreated();
     } catch (err: any) {
       onSnackbar(err.response?.data?.detail || "Failed to create experiment.", "error");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -126,13 +130,13 @@ export const ExperimentCreateDialog: React.FC<Props> = ({
         </Stack>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} disabled={submitting}>Cancel</Button>
         <Button
           onClick={handleCreate}
           variant="contained"
-          disabled={!formData.name || !formData.scenario_id || !formData.strategy_id}
+          disabled={submitting || !formData.name || !formData.scenario_id || !formData.strategy_id}
         >
-          Create
+          {submitting ? "Creating..." : "Create"}
         </Button>
       </DialogActions>
     </Dialog>

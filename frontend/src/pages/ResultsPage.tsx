@@ -5,7 +5,7 @@ import {
   Card,
   CardContent,
   Grid,
-  CircularProgress,
+  Skeleton,
   Chip,
   Stack,
   Button,
@@ -22,6 +22,7 @@ import ResultDetailDrawer, {
   formatMetric,
   getComputedMetrics,
 } from "../components/results/result-detail-drawer";
+import { formatRelativeTime } from "../utils/format-relative-time";
 
 const ResultsPage: React.FC = () => {
   const [results, setResults] = useState<Result[]>([]);
@@ -114,13 +115,17 @@ const ResultsPage: React.FC = () => {
           Results
         </Typography>
         {loading ? (
-          <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>
-            <CircularProgress color="primary" />
-          </Box>
+          <Grid container spacing={3}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Grid item xs={12} sm={6} md={4} key={i}>
+                <Skeleton variant="rectangular" height={180} sx={{ borderRadius: 1 }} />
+              </Grid>
+            ))}
+          </Grid>
         ) : error ? (
-          <Typography color="error" sx={{ mt: 4 }}>{error}</Typography>
+          <Alert severity="error" sx={{ mt: 4 }}>{error}</Alert>
         ) : results.length === 0 ? (
-          <Typography color="text.secondary" sx={{ mt: 4 }}>No results found.</Typography>
+          <Typography color="text.secondary" sx={{ mt: 4 }}>No results yet — run an experiment to generate one.</Typography>
         ) : (
           <Grid container spacing={3}>
             {results.map((r) => {
@@ -133,8 +138,11 @@ const ResultsPage: React.FC = () => {
                       background: "rgba(26,32,44,0.98)",
                       height: "100%",
                       cursor: "pointer",
-                      transition: "all 0.2s ease-in-out",
-                      "&:hover": { transform: "translateY(-2px)", boxShadow: "0 8px 25px rgba(0,0,0,0.3)" },
+                      transition: "transform 150ms ease, box-shadow 150ms ease",
+                      "&:hover": {
+                        transform: "translateY(-2px)",
+                        boxShadow: "0 8px 24px 0 rgba(0,0,0,0.4)",
+                      },
                     }}
                     onClick={() => openDrawer(r)}
                   >
@@ -146,7 +154,7 @@ const ResultsPage: React.FC = () => {
                             {r.experiment_name || `Result #${r.id}`}
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
-                            {r.created_at?.split("T")[0]}
+                            {formatRelativeTime(r.created_at)}
                           </Typography>
                         </Box>
                       </Stack>
@@ -211,7 +219,7 @@ const ResultsPage: React.FC = () => {
         open={snackbar.open}
         autoHideDuration={4000}
         onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
       >
         <Alert severity={snackbar.severity} onClose={() => setSnackbar((s) => ({ ...s, open: false }))} sx={{ width: "100%" }}>
           {snackbar.message}

@@ -5,7 +5,7 @@ import {
   Card,
   CardContent,
   Grid,
-  CircularProgress,
+  Skeleton,
   Button,
   Stack,
   Chip,
@@ -30,6 +30,7 @@ import {
   Workload,
   Platform,
 } from "../services/api";
+import { formatRelativeTime } from "../utils/format-relative-time";
 
 const ScenariosPage: React.FC = () => {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
@@ -149,16 +150,18 @@ const ScenariosPage: React.FC = () => {
         </Button>
       </Box>
       {loading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", mt: 6 }}>
-          <CircularProgress color="primary" />
-        </Box>
+        <Grid container spacing={3}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Grid item xs={12} sm={6} md={4} key={i}>
+              <Skeleton variant="rectangular" height={180} sx={{ borderRadius: 1 }} />
+            </Grid>
+          ))}
+        </Grid>
       ) : error ? (
-        <Typography color="error" sx={{ mt: 4 }}>
-          {error}
-        </Typography>
+        <Alert severity="error" sx={{ mt: 4 }}>{error}</Alert>
       ) : scenarios.length === 0 ? (
         <Typography color="text.secondary" sx={{ mt: 4 }}>
-          No scenarios found.
+          No scenarios yet — click Create Scenario to define one.
         </Typography>
       ) : (
         <Grid container spacing={3}>
@@ -169,15 +172,18 @@ const ScenariosPage: React.FC = () => {
                   borderRadius: 1,
                   background: "rgba(26,32,44,0.98)",
                   height: "100%",
+                  overflow: "hidden",
                 }}
               >
                 <CardContent>
                   <Stack direction="row" alignItems="center" spacing={2} mb={2}>
                     <Settings sx={{ fontSize: 36, color: "#4a9eff" }} />
-                    <Box>
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Typography
                         variant="h6"
                         fontWeight={900}
+                        noWrap
+                        title={s.name}
                         sx={{ color: "#fff" }}
                       >
                         {s.name}
@@ -199,7 +205,7 @@ const ScenariosPage: React.FC = () => {
                   </Typography>
                   <Stack direction="row" spacing={1}>
                     <Chip
-                      label={s.created_at?.split("T")[0]}
+                      label={formatRelativeTime(s.created_at)}
                       size="small"
                       color="default"
                     />

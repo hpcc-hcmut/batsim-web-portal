@@ -45,6 +45,7 @@ import {
   Result,
 } from "../services/api";
 import DashboardAnalyticsGadget from "../components/DashboardAnalyticsGadget";
+import { formatRelativeTime } from "../utils/format-relative-time";
 
 interface DashboardStats {
   workloads: number;
@@ -435,7 +436,7 @@ const DashboardPage: React.FC = () => {
                       </Stack>
                       <Stack direction="row" spacing={1} alignItems="center">
                         <Chip
-                          label={exp.created_at?.split("T")[0] || "-"}
+                          label={formatRelativeTime(exp.created_at)}
                           size="small"
                           color="default"
                         />
