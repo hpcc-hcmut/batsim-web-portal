@@ -17,8 +17,11 @@ RUN mkdir -p storage/workloads storage/platforms storage/strategies storage/expe
 
 EXPOSE 8000
 
-# --reload-dir app: whitelist only the Python source tree. By default uvicorn
-# watches the working dir recursively, which includes storage/ and batsim.db.
-# Writes to those during a simulation run would trigger reloads that orphan
-# running pybatsim/batsim containers and mark in-flight experiments FAILED.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
+# uvicorn quirk: --reload-dir is silently ignored when the given path is
+# inside CWD (see uvicorn/supervisors/watchfilesreload.py:30 - "if Path.cwd()
+# not in directory.parents"). So we cannot whitelist /app/app while CWD=/app.
+# Instead use --reload-exclude pointing at the storage directory: uvicorn's
+# FileFilter checks Path.is_dir() on each exclude value, and matching paths
+# go into exclude_dirs which is checked via "exclude_dir in path.parents".
+# This correctly suppresses reloads for any *.py file under storage/.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-exclude", "/app/storage"]
