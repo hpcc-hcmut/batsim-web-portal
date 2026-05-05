@@ -16,9 +16,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  InputLabel,
-  FormControl,
-  FormHelperText,
   Snackbar,
   Alert,
   Divider,
@@ -36,12 +33,12 @@ import {
 } from "@mui/icons-material";
 import {
   strategiesAPI,
-  templatesAPI,
   extractValidationErrors,
   Strategy,
   ValidationResponse,
 } from "../services/api";
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
+import FileDropzone from "../components/common/file-dropzone";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import python from "react-syntax-highlighter/dist/esm/languages/prism/python";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
@@ -594,52 +591,26 @@ const StrategiesPage: React.FC = () => {
               minRows={2}
               sx={{ mb: 2 }}
             />
-            {(panelMode === "add" || panelMode === "edit") && (
-              <FormControl
-                fullWidth
-                sx={{ mb: 2 }}
+            <Box sx={{ mb: 2 }}>
+              <FileDropzone
+                id="strategy-file"
+                accept=".py,.txt"
+                file={form.file}
+                onFileChange={(file) => setForm((f) => ({ ...f, file }))}
+                label={`Python File${panelMode === "add" ? " (required)" : " (optional)"}`}
+                hint={
+                  panelMode === "edit"
+                    ? "Python scheduler module (.py) — leave empty to keep current file"
+                    : "Python scheduler module (.py)"
+                }
                 required={panelMode === "add"}
-              >
-                <InputLabel shrink htmlFor="strategy-file">
-                  Python File {panelMode === "add" ? "*" : "(optional)"}
-                </InputLabel>
-                <input
-                  id="strategy-file"
-                  type="file"
-                  accept=".py,.txt"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setForm((f) => ({ ...f, file }));
-                  }}
-                  style={{ marginTop: 8 }}
-                  required={panelMode === "add"}
-                />
-                <FormHelperText>
-                  {form.file
-                    ? form.file.name
-                    : panelMode === "add"
-                    ? "Choose a Python strategy file"
-                    : "Leave blank to keep current file"}
-                </FormHelperText>
-              </FormControl>
-            )}
+              />
+            </Box>
             <ValidationErrorPanel validation={validationResult} />
             {formError && (
               <Typography color="error" sx={{ mb: 2 }}>
                 {formError}
               </Typography>
-            )}
-            {panelMode === "add" && (
-              <Button
-                variant="text"
-                size="small"
-                startIcon={<Download />}
-                href={templatesAPI.download("strategy")}
-                download
-                sx={{ mb: 2 }}
-              >
-                Download strategy template
-              </Button>
             )}
             <Stack direction="row" spacing={2}>
               <Button

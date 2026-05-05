@@ -16,9 +16,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  InputLabel,
-  FormControl,
-  FormHelperText,
   Snackbar,
   Alert,
   Divider,
@@ -40,12 +37,12 @@ import {
 } from "@mui/icons-material";
 import {
   platformsAPI,
-  templatesAPI,
   extractValidationErrors,
   Platform,
   ValidationResponse,
 } from "../services/api";
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
+import FileDropzone from "../components/common/file-dropzone";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -479,52 +476,26 @@ const PlatformsPage: React.FC = () => {
               minRows={2}
               sx={{ mb: 2 }}
             />
-            {(panelMode === "add" || panelMode === "edit") && (
-              <FormControl
-                fullWidth
-                sx={{ mb: 2 }}
+            <Box sx={{ mb: 2 }}>
+              <FileDropzone
+                id="platform-file"
+                accept=".xml,.txt,.platform"
+                file={form.file}
+                onFileChange={(file) => setForm((f) => ({ ...f, file }))}
+                label={`File${panelMode === "add" ? " (required)" : " (optional)"}`}
+                hint={
+                  panelMode === "edit"
+                    ? "XML platform definition — leave empty to keep current file"
+                    : "XML platform definition"
+                }
                 required={panelMode === "add"}
-              >
-                <InputLabel shrink htmlFor="platform-file">
-                  File {panelMode === "add" ? "*" : "(optional)"}
-                </InputLabel>
-                <input
-                  id="platform-file"
-                  type="file"
-                  accept=".xml,.txt,.platform"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setForm((f) => ({ ...f, file }));
-                  }}
-                  style={{ marginTop: 8 }}
-                  required={panelMode === "add"}
-                />
-                <FormHelperText>
-                  {form.file
-                    ? form.file.name
-                    : panelMode === "add"
-                    ? "Choose a platform file"
-                    : "Leave blank to keep current file"}
-                </FormHelperText>
-              </FormControl>
-            )}
+              />
+            </Box>
             <ValidationErrorPanel validation={validationResult} />
             {formError && (
               <Typography color="error" sx={{ mb: 2 }}>
                 {formError}
               </Typography>
-            )}
-            {panelMode === "add" && (
-              <Button
-                variant="text"
-                size="small"
-                startIcon={<Download />}
-                href={templatesAPI.download("platform")}
-                download
-                sx={{ mb: 2 }}
-              >
-                Download platform template
-              </Button>
             )}
             <Stack direction="row" spacing={2}>
               <Button

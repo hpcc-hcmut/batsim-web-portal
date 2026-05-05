@@ -16,9 +16,6 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  InputLabel,
-  FormControl,
-  FormHelperText,
   Snackbar,
   Alert,
   Collapse,
@@ -41,12 +38,12 @@ import {
 import { Storage } from "@mui/icons-material";
 import {
   workloadsAPI,
-  templatesAPI,
   extractValidationErrors,
   Workload,
   ValidationResponse,
 } from "../services/api";
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
+import FileDropzone from "../components/common/file-dropzone";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -508,35 +505,21 @@ const WorkloadsPage: React.FC = () => {
               minRows={2}
               sx={{ mb: 2 }}
             />
-            {(panelMode === "add" || panelMode === "edit") && (
-              <FormControl
-                fullWidth
-                sx={{ mb: 2 }}
+            <Box sx={{ mb: 2 }}>
+              <FileDropzone
+                id="workload-file"
+                accept=".json,.txt,.csv,.dat,.workload"
+                file={form.file}
+                onFileChange={(file) => setForm((f) => ({ ...f, file }))}
+                label={`File${panelMode === "add" ? " (required)" : " (optional)"}`}
+                hint={
+                  panelMode === "edit"
+                    ? "JSON / TXT / CSV / DAT / WORKLOAD — leave empty to keep current file"
+                    : "JSON / TXT / CSV / DAT / WORKLOAD"
+                }
                 required={panelMode === "add"}
-              >
-                <InputLabel shrink htmlFor="workload-file">
-                  File {panelMode === "add" ? "*" : "(optional)"}
-                </InputLabel>
-                <input
-                  id="workload-file"
-                  type="file"
-                  accept=".json,.txt,.csv,.dat,.workload"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setForm((f) => ({ ...f, file }));
-                  }}
-                  style={{ marginTop: 8 }}
-                  required={panelMode === "add"}
-                />
-                <FormHelperText>
-                  {form.file
-                    ? form.file.name
-                    : panelMode === "add"
-                    ? "Choose a workload file"
-                    : "Leave blank to keep current file"}
-                </FormHelperText>
-              </FormControl>
-            )}
+              />
+            </Box>
             <ValidationErrorPanel validation={validationResult} />
             {formError && (
               <Typography color="error" sx={{ mb: 2 }}>
@@ -566,17 +549,6 @@ const WorkloadsPage: React.FC = () => {
                 Cancel
               </Button>
             </Stack>
-            {panelMode === "add" && (
-              <Button
-                variant="text"
-                size="small"
-                href={templatesAPI.download("workload")}
-                download
-                sx={{ mt: 1, textTransform: "none" }}
-              >
-                Download workload template (.json)
-              </Button>
-            )}
           </Box>
         )}
         {/* Delete Confirmation Dialog */}

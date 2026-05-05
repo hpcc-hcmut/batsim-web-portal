@@ -149,7 +149,14 @@ const Layout: React.FC = () => {
   );
 
   return (
-    <Box sx={{ display: "flex" }}>
+    <Box
+      sx={{
+        display: "flex",
+        minHeight: "100vh",
+        bgcolor: "background.default",
+        overflowX: "hidden",
+      }}
+    >
       <CssBaseline />
       <AppBar
         position="fixed"
@@ -293,7 +300,9 @@ const Layout: React.FC = () => {
         sx={{
           flexGrow: 1,
           p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
+          minWidth: 0,
+          minHeight: "100vh",
+          bgcolor: "background.default",
         }}
       >
         <Toolbar />
