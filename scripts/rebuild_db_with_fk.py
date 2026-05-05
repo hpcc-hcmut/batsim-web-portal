@@ -17,6 +17,7 @@ Why this is needed:
 Backup location: batsim.db.bak-<YYYYMMDD-HHMMSS> (same directory as batsim.db)
 """
 
+import os
 import sys
 import shutil
 import argparse
@@ -31,6 +32,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 BACKEND_DIR = REPO_ROOT / "backend"
 DB_PATH = BACKEND_DIR / "batsim.db"
+
+# DATABASE_URL in backend/.env uses sqlite:///./batsim.db (relative path).
+# Ensure SQLAlchemy resolves it against backend/ regardless of where the user
+# invoked the script from. Without this, running from <repo>/ creates a stub
+# DB at <repo>/batsim.db and "no such table: users" surfaces on first query.
+os.chdir(BACKEND_DIR)
 
 
 def _backup_db() -> Path:
@@ -91,8 +98,16 @@ def main():
     from app.models import User, Workload, Platform, Scenario, Strategy, Experiment, Result  # noqa: F401
 
     # ---------------------------------------------------------------------------
-    # Step 1: backup
+    # Step 1: sanity check + backup
     # ---------------------------------------------------------------------------
+    # Confirm SQLAlchemy is pointed at the same DB file we plan to back up.
+    engine_url_path = engine.url.database  # for sqlite:///./batsim.db this is "./batsim.db"
+    engine_resolved = (Path.cwd() / engine_url_path).resolve() if engine_url_path else None
+    if engine_resolved and engine_resolved != DB_PATH.resolve():
+        print(f"[ERROR] DB path mismatch — engine sees {engine_resolved}, expected {DB_PATH.resolve()}")
+        print("        Check backend/.env DATABASE_URL or the script's chdir target.")
+        sys.exit(2)
+
     if DB_PATH.exists():
         before_db = SessionLocal()
         try:
