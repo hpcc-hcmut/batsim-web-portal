@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HTTP smoke walker — exercises every CRUD endpoint as an authenticated user.
+"""HTTP smoke walker - exercises every CRUD endpoint as an authenticated user.
 
 Walks the full entity graph via real HTTP calls against a running backend stack.
 Verifies FK cascade behavior end-to-end (not just ORM unit level).
@@ -63,7 +63,7 @@ _RUN_TS = str(int(time.time()))
 
 
 # ---------------------------------------------------------------------------
-# StepRecorder — tracks pass/fail/skip per named step
+# StepRecorder - tracks pass/fail/skip per named step
 # ---------------------------------------------------------------------------
 
 class StepRecorder:
@@ -80,7 +80,7 @@ class StepRecorder:
         elapsed = (time.monotonic() - self._t0) * 1000 if self._t0 else 0.0
         self.results.append((self._current, status, elapsed, note))
         tag = {"PASS": "\033[32mPASS\033[0m", "FAIL": "\033[31mFAIL\033[0m", "SKIP": "\033[33mSKIP\033[0m"}.get(status, status)
-        note_str = f" — {note}" if note else ""
+        note_str = f" - {note}" if note else ""
         print(f"  [{tag}] {self._current} ({elapsed:.0f}ms){note_str}")
         self._current = None
         self._t0 = None
@@ -99,7 +99,7 @@ class StepRecorder:
         failed = sum(1 for _, s, _, _ in self.results if s == "FAIL")
         skipped = sum(1 for _, s, _, _ in self.results if s == "SKIP")
         total_ms = sum(ms for _, _, ms, _ in self.results)
-        print("\n" + "─" * 60)
+        print("\n" + "-" * 60)
         print(f"  {passed} passed, {failed} failed, {skipped} skipped in {total_ms / 1000:.1f}s")
         if failed:
             print("  FAILED steps:")
@@ -152,16 +152,16 @@ def _walk_workload(client: httpx.Client, base_url: str, rec: StepRecorder) -> Op
     # Create
     rec.start("workload.create")
     resp = client.post(
-        f"{base_url}/api/workloads/upload",
+        f"{base_url}/api/workloads/",
         files={"file": (f"{name}.json", content, "application/json")},
         data={"name": name, "description": "smoke test workload"},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return None
     wl_id = resp.json()["id"]
     rec.ok(f"id={wl_id}")
 
-    # List — find by name
+    # List - find by name
     rec.start("workload.list")
     resp = client.get(f"{base_url}/api/workloads/")
     if not _check(rec, resp):
@@ -200,11 +200,11 @@ def _walk_platform(client: httpx.Client, base_url: str, rec: StepRecorder) -> Op
 
     rec.start("platform.create")
     resp = client.post(
-        f"{base_url}/api/platforms/upload",
+        f"{base_url}/api/platforms/",
         files={"file": (f"{name}.xml", content, "application/xml")},
         data={"name": name, "description": "smoke test platform"},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return None
     pl_id = resp.json()["id"]
     rec.ok(f"id={pl_id}")
@@ -238,11 +238,11 @@ def _walk_strategy(client: httpx.Client, base_url: str, rec: StepRecorder) -> Op
 
     rec.start("strategy.create")
     resp = client.post(
-        f"{base_url}/api/strategies/upload",
+        f"{base_url}/api/strategies/",
         files={"file": (f"{name}.py", content, "text/x-python")},
         data={"name": name, "description": "smoke test strategy"},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return None
     st_id = resp.json()["id"]
     rec.ok(f"id={st_id}")
@@ -288,7 +288,7 @@ def _walk_scenario(client: httpx.Client, base_url: str, rec: StepRecorder, wl_id
         f"{base_url}/api/scenarios/",
         json={"name": name, "description": "smoke", "workload_id": wl_id, "platform_id": pl_id},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return None
     sc_id = resp.json()["id"]
     rec.ok(f"id={sc_id}")
@@ -309,7 +309,7 @@ def _walk_experiment(client: httpx.Client, base_url: str, rec: StepRecorder, sc_
         f"{base_url}/api/experiments/",
         json={"name": name, "description": "smoke", "scenario_id": sc_id, "strategy_id": st_id},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return None
     exp_id = resp.json()["id"]
     rec.ok(f"id={exp_id}")
@@ -327,18 +327,18 @@ def _walk_experiment(client: httpx.Client, base_url: str, rec: StepRecorder, sc_
 # ---------------------------------------------------------------------------
 
 def _verify_cascade(client: httpx.Client, base_url: str, rec: StepRecorder):
-    """Create workload→scenario→experiment chain, delete workload, verify cascade."""
+    """Create workload->scenario->experiment chain, delete workload, verify cascade."""
     ts = f"casc-{_RUN_TS}"
 
     # Create workload
     rec.start("cascade.create_workload")
     content = json.dumps(SAMPLE_WORKLOAD).encode()
     resp = client.post(
-        f"{base_url}/api/workloads/upload",
+        f"{base_url}/api/workloads/",
         files={"file": (f"{ts}-wl.json", content, "application/json")},
         data={"name": f"{ts}-wl", "description": "cascade smoke"},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return
     casc_wl_id = resp.json()["id"]
     rec.ok(f"id={casc_wl_id}")
@@ -347,11 +347,11 @@ def _verify_cascade(client: httpx.Client, base_url: str, rec: StepRecorder):
     rec.start("cascade.create_platform")
     content_xml = SAMPLE_PLATFORM_XML.encode()
     resp = client.post(
-        f"{base_url}/api/platforms/upload",
+        f"{base_url}/api/platforms/",
         files={"file": (f"{ts}-pl.xml", content_xml, "application/xml")},
         data={"name": f"{ts}-pl", "description": "cascade smoke"},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return
     casc_pl_id = resp.json()["id"]
     rec.ok(f"id={casc_pl_id}")
@@ -360,11 +360,11 @@ def _verify_cascade(client: httpx.Client, base_url: str, rec: StepRecorder):
     rec.start("cascade.create_strategy")
     content_py = SAMPLE_STRATEGY_PY.encode()
     resp = client.post(
-        f"{base_url}/api/strategies/upload",
+        f"{base_url}/api/strategies/",
         files={"file": (f"{ts}-st.py", content_py, "text/x-python")},
         data={"name": f"{ts}-st", "description": "cascade smoke"},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return
     casc_st_id = resp.json()["id"]
     rec.ok(f"id={casc_st_id}")
@@ -375,7 +375,7 @@ def _verify_cascade(client: httpx.Client, base_url: str, rec: StepRecorder):
         f"{base_url}/api/scenarios/",
         json={"name": f"{ts}-sc", "description": "cascade smoke", "workload_id": casc_wl_id, "platform_id": casc_pl_id},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return
     casc_sc_id = resp.json()["id"]
     rec.ok(f"id={casc_sc_id}")
@@ -386,15 +386,15 @@ def _verify_cascade(client: httpx.Client, base_url: str, rec: StepRecorder):
         f"{base_url}/api/experiments/",
         json={"name": f"{ts}-exp", "description": "cascade smoke", "scenario_id": casc_sc_id, "strategy_id": casc_st_id},
     )
-    if not _check(rec, resp, 201):
+    if not _check(rec, resp):
         return
     casc_exp_id = resp.json()["id"]
     rec.ok(f"id={casc_exp_id}")
 
-    # Delete workload — cascade should remove scenario and experiment
+    # Delete workload - cascade should remove scenario and experiment
     rec.start("cascade.delete_workload")
     resp = client.delete(f"{base_url}/api/workloads/{casc_wl_id}")
-    if not _check(rec, resp, 204):
+    if not _check(rec, resp):
         return
     rec.ok()
 
@@ -404,7 +404,7 @@ def _verify_cascade(client: httpx.Client, base_url: str, rec: StepRecorder):
     if resp.status_code == 404:
         rec.ok("scenario cascaded away as expected")
     elif resp.status_code == 200:
-        rec.fail("scenario still exists — cascade did NOT fire (DB rebuild needed?)")
+        rec.fail("scenario still exists - cascade did NOT fire (DB rebuild needed?)")
     else:
         rec.fail(f"unexpected status {resp.status_code}")
 
@@ -414,7 +414,7 @@ def _verify_cascade(client: httpx.Client, base_url: str, rec: StepRecorder):
     if resp.status_code == 404:
         rec.ok("experiment cascaded away as expected")
     elif resp.status_code == 200:
-        rec.fail("experiment still exists — cascade did NOT fire (DB rebuild needed?)")
+        rec.fail("experiment still exists - cascade did NOT fire (DB rebuild needed?)")
     else:
         rec.fail(f"unexpected status {resp.status_code}")
 
@@ -454,23 +454,23 @@ def _cleanup(client: httpx.Client, base_url: str, ids: dict):
     # Experiments first (deepest leaf before scenario/strategy)
     for exp_id in ids.get("experiments", []):
         r = client.delete(f"{base_url}/api/experiments/{exp_id}")
-        print(f"    experiment {exp_id} → {r.status_code}")
+        print(f"    experiment {exp_id} -> {r.status_code}")
 
     # Scenarios
     for sc_id in ids.get("scenarios", []):
         r = client.delete(f"{base_url}/api/scenarios/{sc_id}")
-        print(f"    scenario {sc_id} → {r.status_code}")
+        print(f"    scenario {sc_id} -> {r.status_code}")
 
     # Top-level resources (cascade handles remaining children if PRAGMA active)
     for wl_id in ids.get("workloads", []):
         r = client.delete(f"{base_url}/api/workloads/{wl_id}")
-        print(f"    workload {wl_id} → {r.status_code}")
+        print(f"    workload {wl_id} -> {r.status_code}")
     for pl_id in ids.get("platforms", []):
         r = client.delete(f"{base_url}/api/platforms/{pl_id}")
-        print(f"    platform {pl_id} → {r.status_code}")
+        print(f"    platform {pl_id} -> {r.status_code}")
     for st_id in ids.get("strategies", []):
         r = client.delete(f"{base_url}/api/strategies/{st_id}")
-        print(f"    strategy {st_id} → {r.status_code}")
+        print(f"    strategy {st_id} -> {r.status_code}")
 
 
 # ---------------------------------------------------------------------------
@@ -489,13 +489,13 @@ def main():
     rec = StepRecorder()
     created_ids: dict = {"workloads": [], "platforms": [], "strategies": [], "scenarios": [], "experiments": []}
 
-    print(f"\nBatSim smoke walker — {base_url}\n")
+    print(f"\nBatSim smoke walker - {base_url}\n")
 
     with httpx.Client(timeout=30) as client:
         # --- Auth ---
         token = _login(client, base_url, args.user, args.password, rec)
         if not token:
-            print("\n[ABORT] Login failed — cannot continue without a valid token.")
+            print("\n[ABORT] Login failed - cannot continue without a valid token.")
             return 1
 
         client.headers.update({"Authorization": f"Bearer {token}"})
@@ -523,7 +523,7 @@ def main():
                     created_ids["scenarios"].append(sc_id)
             else:
                 rec.start("scenario.create")
-                rec.skip("skipped — workload or platform creation failed")
+                rec.skip("skipped - workload or platform creation failed")
 
             # --- Experiment CRUD (needs scenario + strategy) ---
             if created_ids["scenarios"] and st_id:
@@ -532,7 +532,7 @@ def main():
                     created_ids["experiments"].append(exp_id)
             else:
                 rec.start("experiment.create")
-                rec.skip("skipped — scenario or strategy creation failed")
+                rec.skip("skipped - scenario or strategy creation failed")
 
             # --- Cascade verification ---
             _verify_cascade(client, base_url, rec)
