@@ -22,9 +22,9 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # Relationships
-    workloads = relationship("Workload", back_populates="creator")
-    platforms = relationship("Platform", back_populates="creator")
-    scenarios = relationship("Scenario", back_populates="creator")
-    strategies = relationship("Strategy", back_populates="creator")
-    experiments = relationship("Experiment", back_populates="creator")
+    # Relationships — no cascade; DB SET NULL handles created_by on user delete
+    workloads = relationship("Workload", back_populates="creator", passive_deletes=True)
+    platforms = relationship("Platform", back_populates="creator", passive_deletes=True)
+    scenarios = relationship("Scenario", back_populates="creator", passive_deletes=True)
+    strategies = relationship("Strategy", back_populates="creator", passive_deletes=True)
+    experiments = relationship("Experiment", back_populates="creator", passive_deletes=True)

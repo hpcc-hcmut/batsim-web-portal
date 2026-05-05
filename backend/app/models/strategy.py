@@ -13,7 +13,7 @@ class Strategy(Base):
     file_path = Column(String, nullable=False)
     file_size = Column(Integer)
     file_type = Column(String, default="python")
-    created_by = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Strategy metadata
@@ -24,4 +24,4 @@ class Strategy(Base):
 
     # Relationships
     creator = relationship("User", back_populates="strategies")
-    experiments = relationship("Experiment", back_populates="strategy")
+    experiments = relationship("Experiment", back_populates="strategy", cascade="all, delete-orphan", passive_deletes=True)

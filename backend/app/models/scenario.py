@@ -10,9 +10,9 @@ class Scenario(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(Text)
-    workload_id = Column(Integer, ForeignKey("workloads.id"), nullable=False)
-    platform_id = Column(Integer, ForeignKey("platforms.id"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"))
+    workload_id = Column(Integer, ForeignKey("workloads.id", ondelete="CASCADE"), nullable=False)
+    platform_id = Column(Integer, ForeignKey("platforms.id", ondelete="CASCADE"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -20,4 +20,4 @@ class Scenario(Base):
     workload = relationship("Workload", back_populates="scenarios")
     platform = relationship("Platform", back_populates="scenarios")
     creator = relationship("User", back_populates="scenarios")
-    experiments = relationship("Experiment", back_populates="scenario")
+    experiments = relationship("Experiment", back_populates="scenario", cascade="all, delete-orphan", passive_deletes=True)

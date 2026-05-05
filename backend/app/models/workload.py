@@ -13,7 +13,7 @@ class Workload(Base):
     file_path = Column(String, nullable=False)
     file_size = Column(Integer)
     file_type = Column(String)
-    created_by = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     nb_res = Column(Integer, nullable=True)
@@ -23,4 +23,4 @@ class Workload(Base):
 
     # Relationships
     creator = relationship("User", back_populates="workloads")
-    scenarios = relationship("Scenario", back_populates="workload")
+    scenarios = relationship("Scenario", back_populates="workload", cascade="all, delete-orphan", passive_deletes=True)

@@ -43,6 +43,14 @@ def run_migrations():
 
 run_migrations()
 
+# Log FK integrity health at startup (non-fatal — surfaces violations on old schema)
+with engine.connect() as _fk_conn:
+    _violations = _fk_conn.execute(text("PRAGMA foreign_key_check")).fetchall()
+    if _violations:
+        print(f"[WARN] FK violations detected ({len(_violations)} rows): {_violations[:5]}")
+    else:
+        print("[INFO] PRAGMA foreign_key_check: no violations.")
+
 app = FastAPI(
     title="BatSim Web Portal API",
     description="A modern web portal for managing BatSim simulations",

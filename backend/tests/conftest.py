@@ -4,7 +4,7 @@ import os
 import sys
 import json
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 
 # Add app to path
@@ -31,6 +31,14 @@ def test_engine():
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
     )
+
+    # CRITICAL: enable FK enforcement on in-memory test DB so cascade tests are not false-positive
+    @event.listens_for(engine, "connect")
+    def _enable_fk(dbapi_conn, _):
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys=ON")
+        cur.close()
+
     # Import all models so Base.metadata knows about them
     Base.metadata.create_all(bind=engine)
     yield engine

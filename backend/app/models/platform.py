@@ -13,7 +13,7 @@ class Platform(Base):
     file_path = Column(String, nullable=False)
     file_size = Column(Integer)
     file_type = Column(String)
-    created_by = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     nb_hosts = Column(Integer, nullable=True)
@@ -23,4 +23,4 @@ class Platform(Base):
 
     # Relationships
     creator = relationship("User", back_populates="platforms")
-    scenarios = relationship("Scenario", back_populates="platform")
+    scenarios = relationship("Scenario", back_populates="platform", cascade="all, delete-orphan", passive_deletes=True)

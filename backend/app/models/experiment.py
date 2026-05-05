@@ -21,8 +21,8 @@ class Experiment(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(Text)
-    scenario_id = Column(Integer, ForeignKey("scenarios.id"), nullable=False)
-    strategy_id = Column(Integer, ForeignKey("strategies.id"), nullable=False)
+    scenario_id = Column(Integer, ForeignKey("scenarios.id", ondelete="CASCADE"), nullable=False)
+    strategy_id = Column(Integer, ForeignKey("strategies.id", ondelete="CASCADE"), nullable=False)
     status = Column(Enum(ExperimentStatus), default=ExperimentStatus.PENDING)
 
     # Container information
@@ -51,7 +51,7 @@ class Experiment(Base):
     error_message = Column(Text)  # Error details on failure
     container_network = Column(String)  # Docker network name for this experiment
 
-    created_by = Column(Integer, ForeignKey("users.id"))
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
@@ -59,4 +59,4 @@ class Experiment(Base):
     scenario = relationship("Scenario", back_populates="experiments")
     strategy = relationship("Strategy", back_populates="experiments")
     creator = relationship("User", back_populates="experiments")
-    results = relationship("Result", back_populates="experiment")
+    results = relationship("Result", back_populates="experiment", cascade="all, delete-orphan", passive_deletes=True)
