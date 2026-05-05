@@ -9,7 +9,7 @@ Usage:
 
 Why this is needed:
     SQLite ALTER TABLE cannot add ON DELETE clauses to existing FK columns.
-    `Base.metadata.create_all()` only creates tables that don't exist yet —
+    `Base.metadata.create_all()` only creates tables that don't exist yet -
     it does NOT alter existing tables. The only way to materialise the new
     ondelete=CASCADE / ondelete=SET NULL declarations from the model layer is
     to drop and recreate every table.
@@ -25,13 +25,14 @@ from datetime import datetime
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Resolve paths — script lives in <repo>/scripts/, DB is in backend/
+# Resolve paths - script lives in <repo>/scripts/, DB is in backend/
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 BACKEND_DIR = REPO_ROOT / "backend"
 DB_PATH = BACKEND_DIR / "batsim.db"
+STORAGE_DIR = BACKEND_DIR / "storage"
 
 # DATABASE_URL in backend/.env uses sqlite:///./batsim.db (relative path).
 # Ensure SQLAlchemy resolves it against backend/ regardless of where the user
@@ -45,8 +46,25 @@ def _backup_db() -> Path:
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     backup_path = DB_PATH.with_name(f"batsim.db.bak-{ts}")
     shutil.copy2(DB_PATH, backup_path)
-    print(f"[BACKUP] {DB_PATH} → {backup_path}")
+    print(f"[BACKUP] {DB_PATH} -> {backup_path}")
     return backup_path
+
+
+def _archive_storage(timestamp: str) -> Path | None:
+    """Move backend/storage/ to a timestamped archive directory.
+
+    Without this, dropped+recreated tables reset PKs to 1, but old per-id
+    storage dirs (e.g. backend/storage/experiments/5/) still exist on disk.
+    A fresh experiment 5 would then surface stale logs from a deleted run.
+    Returns the archive path, or None if storage dir does not exist.
+    """
+    if not STORAGE_DIR.exists():
+        return None
+    archive_path = STORAGE_DIR.with_name(f"storage.bak-{timestamp}")
+    shutil.move(str(STORAGE_DIR), str(archive_path))
+    STORAGE_DIR.mkdir(exist_ok=True)
+    print(f"[ARCHIVE] {STORAGE_DIR} contents moved to {archive_path}")
+    return archive_path
 
 
 def _count_rows(db) -> dict:
@@ -104,10 +122,11 @@ def main():
     engine_url_path = engine.url.database  # for sqlite:///./batsim.db this is "./batsim.db"
     engine_resolved = (Path.cwd() / engine_url_path).resolve() if engine_url_path else None
     if engine_resolved and engine_resolved != DB_PATH.resolve():
-        print(f"[ERROR] DB path mismatch — engine sees {engine_resolved}, expected {DB_PATH.resolve()}")
+        print(f"[ERROR] DB path mismatch - engine sees {engine_resolved}, expected {DB_PATH.resolve()}")
         print("        Check backend/.env DATABASE_URL or the script's chdir target.")
         sys.exit(2)
 
+    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     if DB_PATH.exists():
         before_db = SessionLocal()
         try:
@@ -117,7 +136,10 @@ def main():
             before_db.close()
         _backup_db()
     else:
-        print("[INFO] batsim.db does not exist yet — will be created fresh.")
+        print("[INFO] batsim.db does not exist yet - will be created fresh.")
+
+    # Archive storage dirs so reset PKs don't surface stale per-id logs.
+    _archive_storage(ts)
 
     # ---------------------------------------------------------------------------
     # Step 2: drop all + recreate (materialises ON DELETE CASCADE in new schema)

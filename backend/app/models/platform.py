@@ -23,4 +23,5 @@ class Platform(Base):
 
     # Relationships
     creator = relationship("User", back_populates="platforms")
-    scenarios = relationship("Scenario", back_populates="platform", cascade="all, delete-orphan", passive_deletes=True)
+    # passive_deletes=False: ORM walks scenario->experiment chain so storage cleanup hooks fire.
+    scenarios = relationship("Scenario", back_populates="platform", cascade="all, delete-orphan", passive_deletes=False)

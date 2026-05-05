@@ -20,4 +20,7 @@ class Scenario(Base):
     workload = relationship("Workload", back_populates="scenarios")
     platform = relationship("Platform", back_populates="scenarios")
     creator = relationship("User", back_populates="scenarios")
-    experiments = relationship("Experiment", back_populates="scenario", cascade="all, delete-orphan", passive_deletes=True)
+    # passive_deletes=False: ORM loads + deletes children individually so
+    # Experiment.before_delete fires (storage cleanup). DB-level CASCADE remains
+    # as defense-in-depth for raw SQL paths.
+    experiments = relationship("Experiment", back_populates="scenario", cascade="all, delete-orphan", passive_deletes=False)

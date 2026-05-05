@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, event
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -60,3 +60,17 @@ class Experiment(Base):
     strategy = relationship("Strategy", back_populates="experiments")
     creator = relationship("User", back_populates="experiments")
     results = relationship("Result", back_populates="experiment", cascade="all, delete-orphan", passive_deletes=True)
+
+
+# ORM-level cleanup hook: fires for both direct API deletes AND FK CASCADE deletes
+# triggered by parent removal (workload/platform/strategy/scenario). The API handler
+# (api/experiments.py) also wipes exp_dir on direct delete; this listener is the
+# safety net for cascade paths that bypass the handler.
+@event.listens_for(Experiment, "before_delete")
+def _wipe_experiment_storage(_mapper, _connection, target):
+    import os
+    import shutil
+    from app.core.config import settings
+    exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(target.id))
+    if os.path.exists(exp_dir):
+        shutil.rmtree(exp_dir, ignore_errors=True)

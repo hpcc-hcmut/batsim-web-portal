@@ -23,4 +23,5 @@ class Workload(Base):
 
     # Relationships
     creator = relationship("User", back_populates="workloads")
-    scenarios = relationship("Scenario", back_populates="workload", cascade="all, delete-orphan", passive_deletes=True)
+    # passive_deletes=False: ORM walks scenario->experiment chain so storage cleanup hooks fire.
+    scenarios = relationship("Scenario", back_populates="workload", cascade="all, delete-orphan", passive_deletes=False)

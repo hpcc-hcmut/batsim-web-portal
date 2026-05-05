@@ -24,4 +24,5 @@ class Strategy(Base):
 
     # Relationships
     creator = relationship("User", back_populates="strategies")
-    experiments = relationship("Experiment", back_populates="strategy", cascade="all, delete-orphan", passive_deletes=True)
+    # passive_deletes=False: see Scenario.experiments for rationale (storage cleanup hook).
+    experiments = relationship("Experiment", back_populates="strategy", cascade="all, delete-orphan", passive_deletes=False)
