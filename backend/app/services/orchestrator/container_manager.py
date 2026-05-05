@@ -290,10 +290,12 @@ def cleanup_orphan_containers():
         logger.warning(f"Failed to list orphan networks: {e}")
 
     # Mark stale RUNNING experiments as FAILED.
-    # Backend restart kills the orchestrator coroutine; the experiment row
-    # stays "running" forever even though the containers are gone (or about
-    # to be removed by the loop above). Without this, users see a permanently
-    # stuck experiment with no way to retry except manual SQL.
+    # cleanup_orphan_containers runs only on backend startup. Any experiment
+    # still flagged RUNNING at this point is by definition orphaned: its
+    # orchestrator coroutine died with the previous process. The orphan-loop
+    # above just removed its containers. Marking the row FAILED gives the user
+    # a recovery path. (Note: --reload-dir whitelist in Dockerfile prevents
+    # storage writes from triggering spurious reloads during live experiments.)
     try:
         from app.core.database import SessionLocal
         from app.models.experiment import Experiment, ExperimentStatus

@@ -17,7 +17,8 @@ RUN mkdir -p storage/workloads storage/platforms storage/strategies storage/expe
 
 EXPOSE 8000
 
-# --reload-exclude prevents file writes under storage/ (workload uploads,
-# experiment logs, simulation outputs) from triggering uvicorn restarts
-# mid-simulation, which would orphan running pybatsim/batsim containers.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-exclude", "storage/*", "--reload-exclude", "*.db", "--reload-exclude", "*.db-journal"]
+# --reload-dir app: whitelist only the Python source tree. By default uvicorn
+# watches the working dir recursively, which includes storage/ and batsim.db.
+# Writes to those during a simulation run would trigger reloads that orphan
+# running pybatsim/batsim containers and mark in-flight experiments FAILED.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/app"]
