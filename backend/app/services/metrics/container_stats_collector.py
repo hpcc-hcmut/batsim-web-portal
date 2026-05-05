@@ -11,6 +11,7 @@ import time
 import docker
 from docker.errors import APIError, NotFound
 
+from app.core.config import settings
 from app.services.metrics.metrics_exporter import (
     container_cpu_percent,
     container_memory_bytes,
@@ -22,9 +23,6 @@ logger = logging.getLogger(__name__)
 # Label used to identify experiment containers
 APP_LABEL = "batsim-web-portal"
 
-# Poll interval in seconds
-STATS_POLL_INTERVAL = 5
-
 
 class ContainerStatsCollector:
     """Background thread that polls Docker container stats for Prometheus."""
@@ -33,6 +31,8 @@ class ContainerStatsCollector:
         self._thread = None
         self._stop_event = threading.Event()
         self._client = None
+        # Tracks last-seen timestamp per (experiment_id, container_type) key
+        self._last_seen: dict[tuple[str, str], float] = {}
 
     def start(self):
         """Start the background polling thread."""
@@ -61,7 +61,7 @@ class ContainerStatsCollector:
                 self._collect_stats()
             except Exception as e:
                 logger.debug(f"[Stats] Collection cycle error: {e}")
-            self._stop_event.wait(timeout=STATS_POLL_INTERVAL)
+            self._stop_event.wait(timeout=settings.STATS_POLL_INTERVAL_SECONDS)
 
     def _get_client(self):
         """Get or create a reusable Docker client."""
@@ -120,15 +120,54 @@ class ContainerStatsCollector:
             except (NotFound, APIError, KeyError):
                 continue
 
-        # Clear metrics for containers no longer running
-        stale_keys = [
-            k for k in container_cpu_percent._metrics
-            if k not in seen
-        ]
-        for key in stale_keys:
+        # Update last-seen timestamps for keys observed this cycle
+        now = time.time()
+        for key in seen:
+            self._last_seen[key] = now
+
+        # Evict keys not seen for STATS_KEY_TTL_SECONDS (time-based, not immediate)
+        # This preserves the final gauge value long enough for Prometheus to scrape it
+        ttl = settings.STATS_KEY_TTL_SECONDS
+        expired = [k for k, t in self._last_seen.items() if now - t > ttl]
+        for key in expired:
             container_cpu_percent._metrics.pop(key, None)
             container_memory_bytes._metrics.pop(key, None)
             container_memory_limit_bytes._metrics.pop(key, None)
+            self._last_seen.pop(key, None)
+
+    def emit_snapshot_for(
+        self, container, experiment_id: int, container_type: str
+    ) -> None:
+        """Emit a single synchronous stats snapshot for a (possibly stopped) container.
+
+        Called from the orchestrator finally block BEFORE cleanup() removes the container.
+        Ensures at least one gauge sample exists even for sub-second simulations.
+        """
+        try:
+            exp_id = str(experiment_id)
+            stats = container.stats(stream=False)
+            cpu_pct = self._calc_cpu_percent(stats)
+            mem_usage = stats.get("memory_stats", {}).get("usage", 0)
+            mem_limit = stats.get("memory_stats", {}).get("limit", 0)
+
+            container_cpu_percent.labels(
+                experiment_id=exp_id, container_type=container_type
+            ).set(cpu_pct)
+            container_memory_bytes.labels(
+                experiment_id=exp_id, container_type=container_type
+            ).set(mem_usage)
+            container_memory_limit_bytes.labels(
+                experiment_id=exp_id, container_type=container_type
+            ).set(mem_limit)
+
+            # Refresh TTL so the time-based eviction doesn't immediately clear it
+            self._last_seen[(exp_id, container_type)] = time.time()
+            logger.debug(
+                f"[Stats] Final snapshot emitted for exp={exp_id} type={container_type} "
+                f"cpu={cpu_pct}% mem={mem_usage}"
+            )
+        except (NotFound, APIError, KeyError) as e:
+            logger.debug(f"[Stats] Final snapshot skipped for exp={experiment_id}: {e}")
 
     @staticmethod
     def _calc_cpu_percent(stats: dict) -> float:

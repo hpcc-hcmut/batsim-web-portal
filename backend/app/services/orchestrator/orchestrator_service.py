@@ -85,6 +85,22 @@ def _run_experiment_thread(experiment_id: int):
             _save_logs(db, experiment_id, manager)
         except Exception as e:
             logger.error(f"[Exp {experiment_id}] Failed to save logs: {e}")
+        # Emit final stats snapshot BEFORE containers are removed so Prometheus
+        # can scrape at least one data point even for sub-second simulations
+        try:
+            from app.services.metrics import get_stats_collector
+            stats = get_stats_collector()
+            if stats is not None:
+                if manager.batsim_container is not None:
+                    stats.emit_snapshot_for(
+                        manager.batsim_container, experiment_id, "batsim"
+                    )
+                if manager.pybatsim_container is not None:
+                    stats.emit_snapshot_for(
+                        manager.pybatsim_container, experiment_id, "pybatsim"
+                    )
+        except Exception as e:
+            logger.debug(f"[Exp {experiment_id}] Final stats snapshot failed: {e}")
         manager.cleanup()
         with _lock:
             _running_managers.pop(experiment_id, None)

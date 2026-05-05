@@ -57,6 +57,7 @@ services:
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-admin-api'
     restart: unless-stopped
 
   grafana:

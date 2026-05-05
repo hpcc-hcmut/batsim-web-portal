@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     SIMULATION_TIMEOUT_SECONDS: int = 3600
     SIMULATION_DATA_PATH: str = "./storage/experiments"
 
+    # Container stats collector
+    STATS_POLL_INTERVAL_SECONDS: int = 1
+    STATS_KEY_TTL_SECONDS: int = 30
+
     # Monitoring
     GRAFANA_URL: str = "http://localhost:3000"
 

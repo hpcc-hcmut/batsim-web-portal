@@ -236,6 +236,7 @@ except Exception as e:
 try:
     from app.services.metrics.metrics_exporter import setup_metrics, get_metrics_app
     from app.services.metrics.container_stats_collector import ContainerStatsCollector
+    from app.services.metrics import set_stats_collector
 
     setup_metrics()
 
@@ -259,9 +260,10 @@ try:
     # Mount /metrics as WSGI sub-app (prometheus_client speaks WSGI)
     app.mount("/metrics", WSGIMiddleware(get_metrics_app()))
 
-    # Start background container stats collector
-    _stats_collector = ContainerStatsCollector()
-    _stats_collector.start()
+    # Start background container stats collector and register singleton
+    _collector = ContainerStatsCollector()
+    set_stats_collector(_collector)
+    _collector.start()
     print("[INFO] Prometheus metrics available at /metrics")
 except Exception as e:
     print(f"[WARN] Metrics setup failed: {e}")

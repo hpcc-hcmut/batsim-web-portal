@@ -3,14 +3,11 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  # When backend runs in docker-compose
-  - job_name: "batsim-backend-docker"
+  # Pick ONE based on deployment mode - having both active duplicates every
+  # series in Prometheus and produces double-counted panels in Grafana.
+  # Default: docker-compose mode. Swap targets if running backend on host.
+  - job_name: "batsim-backend"
     metrics_path: "/metrics"
     static_configs:
       - targets: ["backend:8000"]
-
-  # When backend runs locally on host (local dev)
-  - job_name: "batsim-backend-local"
-    metrics_path: "/metrics"
-    static_configs:
-      - targets: ["host.docker.internal:8000"]
+      # - targets: ["host.docker.internal:8000"]  # uncomment for host-side dev
