@@ -84,9 +84,24 @@ export const ExperimentCreateDialog: React.FC<Props> = ({
               onChange={(e) => setFormData({ ...formData, scenario_id: e.target.value })}
               label="Scenario"
             >
-              {scenarios.map((s) => (
-                <MenuItem key={s.id} value={s.id}>{s.name}</MenuItem>
-              ))}
+              {scenarios.map((s) => {
+                const detail = [
+                  s.workload_name && `WL: ${s.workload_name}`,
+                  s.platform_name && `PF: ${s.platform_name}`,
+                ]
+                  .filter(Boolean)
+                  .join(" / ");
+                return (
+                  <MenuItem key={s.id} value={s.id}>
+                    {s.name}
+                    {detail && (
+                      <span style={{ opacity: 0.65, marginLeft: 8 }}>
+                        — {detail}
+                      </span>
+                    )}
+                  </MenuItem>
+                );
+              })}
             </Select>
           </FormControl>
           <FormControl fullWidth required>

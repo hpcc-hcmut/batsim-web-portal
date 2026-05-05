@@ -23,9 +23,6 @@ import {
   Alert,
   Divider,
   Tooltip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
 } from "@mui/material";
 import {
   Code,
@@ -34,7 +31,6 @@ import {
   Close,
   UploadFile,
   Download,
-  ExpandMore,
   Description,
   Code as CodeIcon,
 } from "@mui/icons-material";
@@ -46,6 +42,11 @@ import {
   ValidationResponse,
 } from "../services/api";
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
+import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
+import python from "react-syntax-highlighter/dist/esm/languages/prism/python";
+import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
+
+SyntaxHighlighter.registerLanguage("python", python);
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -73,7 +74,14 @@ const StrategiesPage: React.FC = () => {
     message: string;
     severity: "success" | "error";
   }>({ open: false, message: "", severity: "success" });
-  const [expandedCode, setExpandedCode] = useState(false);
+  const [codePreview, setCodePreview] = useState<{
+    filename: string;
+    content: string;
+    language: string;
+    truncated: boolean;
+  } | null>(null);
+  const [codeLoading, setCodeLoading] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [validationResult, setValidationResult] =
     useState<ValidationResponse | null>(null);
   const [form, setForm] = useState({
@@ -106,6 +114,8 @@ const StrategiesPage: React.FC = () => {
     setSelectedStrategy(strategy || null);
     setFormError(null);
     setValidationResult(null);
+    setCodePreview(null);
+    setCodeError(null);
     if (mode === "add") {
       setForm({ name: "", description: "", file: null });
     } else if (strategy) {
@@ -114,6 +124,28 @@ const StrategiesPage: React.FC = () => {
         description: strategy.description || "",
         file: null,
       });
+      if (mode === "view") {
+        setCodeLoading(true);
+        strategiesAPI
+          .getContent(strategy.id)
+          .then((res) => {
+            setCodePreview({
+              filename: res.data.filename,
+              content: res.data.content,
+              language: res.data.language || "python",
+              truncated: res.data.truncated,
+            });
+          })
+          .catch((err) => {
+            const detail = err?.response?.data?.detail;
+            setCodeError(
+              typeof detail === "string"
+                ? detail
+                : "Could not load source preview."
+            );
+          })
+          .finally(() => setCodeLoading(false));
+      }
     }
     setDrawerOpen(true);
   };
@@ -123,6 +155,8 @@ const StrategiesPage: React.FC = () => {
     setSelectedStrategy(null);
     setFormError(null);
     setValidationResult(null);
+    setCodePreview(null);
+    setCodeError(null);
   };
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -470,6 +504,47 @@ const StrategiesPage: React.FC = () => {
                 </Stack>
               </>
             )}
+
+            {/* Code Preview */}
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+              <b>Source Preview</b>
+              {codePreview?.filename && (
+                <Typography
+                  component="span"
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ ml: 1 }}
+                >
+                  {codePreview.filename}
+                </Typography>
+              )}
+            </Typography>
+            {codeLoading ? (
+              <Box sx={{ py: 2, display: "flex", justifyContent: "center" }}>
+                <CircularProgress size={20} />
+              </Box>
+            ) : codeError ? (
+              <Alert severity="warning" sx={{ mb: 2 }}>
+                {codeError}
+              </Alert>
+            ) : codePreview ? (
+              <Box sx={{ mb: 2, maxHeight: 400, overflow: "auto", borderRadius: 1 }}>
+                <SyntaxHighlighter
+                  language={codePreview.language || "python"}
+                  style={oneDark}
+                  showLineNumbers
+                  customStyle={{ margin: 0, fontSize: 12, borderRadius: 4 }}
+                  wrapLongLines
+                >
+                  {codePreview.content}
+                </SyntaxHighlighter>
+                {codePreview.truncated && (
+                  <Alert severity="info" sx={{ mt: 1 }}>
+                    Source truncated at 100 KB. Download for full file.
+                  </Alert>
+                )}
+              </Box>
+            ) : null}
 
             <Stack direction="row" spacing={2} mt={2}>
               <Button

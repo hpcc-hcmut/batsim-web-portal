@@ -34,6 +34,20 @@ def _parse_and_validate_strategy(file_path: str, filename: str):
     return result, content
 
 
+def _detect_main_entry(filename: str, metadata: dict) -> str | None:
+    """Return filename if it qualifies as the strategy entry, else None.
+
+    A Python file is treated as the entry when the validator detects any of:
+    a scheduler class, a scheduler function, a main() definition, or an
+    `if __name__ == "__main__":` guard. PyBatsim discovers schedulers via the
+    first three; the guard covers stand-alone runnable schedulers.
+    """
+    if any(metadata.get(k) for k in ("scheduler_class", "scheduler_function",
+                                     "has_main", "has_name_guard")):
+        return filename
+    return None
+
+
 @router.get("/", response_model=List[StrategyWithCreator])
 def get_strategies(
     skip: int = 0,
@@ -108,8 +122,9 @@ async def create_strategy(
         os.remove(file_path)
         raise HTTPException(status_code=422, detail=validation.to_dict())
 
-    # Extract metadata
-    main_entry = file.filename if validation.metadata.get("has_main") or validation.metadata.get("has_name_guard") else None
+    # Extract metadata. A file qualifies as the strategy entry point if it
+    # contains a scheduler class, scheduler function, main(), or __name__ guard.
+    main_entry = _detect_main_entry(file.filename, validation.metadata)
     strategy_files = json.dumps([{
         "filename": file.filename,
         "size": file.size,
@@ -196,7 +211,7 @@ async def update_strategy_file(
                 os.remove(new_path)
                 raise HTTPException(status_code=422, detail=validation.to_dict())
 
-            main_entry = file.filename if validation.metadata.get("has_main") or validation.metadata.get("has_name_guard") else None
+            main_entry = _detect_main_entry(file.filename, validation.metadata)
             strategy.main_entry = main_entry
             strategy.strategy_files = json.dumps([{
                 "filename": file.filename,
@@ -249,4 +264,39 @@ def download_strategy(
     return {
         "file_path": strategy.file_path,
         "file_name": os.path.basename(strategy.file_path),
+    }
+
+
+CONTENT_PREVIEW_LIMIT = 100 * 1024  # 100 KB
+
+
+@router.get("/{strategy_id}/content")
+def get_strategy_content(
+    strategy_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return strategy source for read-only preview. Truncates above 100 KB."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    if not strategy.file_path or not os.path.exists(strategy.file_path):
+        raise HTTPException(status_code=404, detail="Strategy file not found on disk")
+
+    size = os.path.getsize(strategy.file_path)
+    truncated = size > CONTENT_PREVIEW_LIMIT
+    try:
+        with open(strategy.file_path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read(CONTENT_PREVIEW_LIMIT)
+    except OSError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
+
+    filename = os.path.basename(strategy.file_path)
+    language = "python" if filename.endswith(".py") else "text"
+    return {
+        "filename": filename,
+        "content": content,
+        "language": language,
+        "size": size,
+        "truncated": truncated,
     }

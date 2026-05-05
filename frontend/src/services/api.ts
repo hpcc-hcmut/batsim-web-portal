@@ -362,6 +362,17 @@ export const strategiesAPI = {
     id: number
   ): Promise<AxiosResponse<{ file_path: string; file_name: string }>> =>
     api.get(`/strategies/${id}/download`),
+  getContent: (
+    id: number
+  ): Promise<
+    AxiosResponse<{
+      filename: string;
+      content: string;
+      language: string;
+      size: number;
+      truncated: boolean;
+    }>
+  > => api.get(`/strategies/${id}/content`),
 };
 
 // Experiments API
