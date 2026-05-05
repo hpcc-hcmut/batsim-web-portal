@@ -431,6 +431,19 @@ export const experimentsAPI = {
       live: boolean;
     }>
   > => api.get(`/experiments/${id}/logs`),
+  getLogStreams: (
+    id: number
+  ): Promise<
+    AxiosResponse<{
+      batsim_stdout: { content: string; truncated: boolean; size_bytes: number };
+      batsim_stderr: { content: string; truncated: boolean; size_bytes: number };
+      pybatsim_stdout: { content: string; truncated: boolean; size_bytes: number };
+      pybatsim_stderr: { content: string; truncated: boolean; size_bytes: number };
+      live: boolean;
+    }>
+  > => api.get(`/experiments/${id}/logs/streams`),
+  downloadLogStreamUrl: (id: number, stream: string): string =>
+    `${API_BASE_URL}/experiments/${id}/logs/streams/${stream}/download`,
 };
 
 // Results API

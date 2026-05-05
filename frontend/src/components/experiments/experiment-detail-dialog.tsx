@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -11,13 +11,13 @@ import {
   Chip,
   Tabs,
   Tab,
-  Paper,
   LinearProgress,
   Divider,
   Alert,
 } from "@mui/material";
-import { Science, PlayArrow, Stop, Refresh, Dashboard } from "@mui/icons-material";
-import { Experiment, experimentsAPI, systemAPI } from "../../services/api";
+import { Science, PlayArrow, Stop, Dashboard } from "@mui/icons-material";
+import { Experiment, systemAPI } from "../../services/api";
+import { LogStreamViewer } from "./log-stream-viewer";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -55,41 +55,7 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
   onStop,
 }) => {
   const [tabValue, setTabValue] = useState(0);
-  const [liveLogs, setLiveLogs] = useState<{ batsim: string; pybatsim: string } | null>(null);
-  const [loadingLogs, setLoadingLogs] = useState(false);
   const [grafanaUrl, setGrafanaUrl] = useState<string | null>(null);
-
-  const fetchLogs = useCallback(async () => {
-    if (!experiment) return;
-    setLoadingLogs(true);
-    try {
-      const res = await experimentsAPI.getLogs(experiment.id);
-      setLiveLogs({
-        batsim: res.data.batsim_logs,
-        pybatsim: res.data.pybatsim_logs,
-      });
-    } catch {
-      // Use stored logs as fallback
-      setLiveLogs({
-        batsim: experiment.batsim_logs || "",
-        pybatsim: experiment.pybatsim_logs || "",
-      });
-    } finally {
-      setLoadingLogs(false);
-    }
-  }, [experiment]);
-
-  // Auto-refresh logs for running experiments
-  useEffect(() => {
-    if (!open || !experiment) return;
-    if (tabValue === 2) {
-      fetchLogs();
-      if (experiment.status === "running") {
-        const interval = setInterval(fetchLogs, 5000);
-        return () => clearInterval(interval);
-      }
-    }
-  }, [open, experiment, tabValue, fetchLogs]);
 
   // Fetch Grafana URL on mount
   useEffect(() => {
@@ -98,12 +64,9 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
     }).catch(() => {});
   }, []);
 
-  // Reset on close
+  // Reset tab on close
   useEffect(() => {
-    if (!open) {
-      setTabValue(0);
-      setLiveLogs(null);
-    }
+    if (!open) setTabValue(0);
   }, [open]);
 
   if (!experiment) return null;
@@ -247,41 +210,10 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
 
         {/* Logs Tab */}
         <TabPanel value={tabValue} index={2}>
-          <Stack spacing={3}>
-            <Stack direction="row" justifyContent="space-between" alignItems="center">
-              <Typography variant="h6">Execution Logs</Typography>
-              <Button size="small" startIcon={<Refresh />} onClick={fetchLogs} disabled={loadingLogs}>
-                Refresh
-              </Button>
-            </Stack>
-            {loadingLogs && <LinearProgress />}
-
-            {(liveLogs?.batsim || experiment.batsim_logs) && (
-              <Box>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>BatSim Logs</Typography>
-                <Paper sx={{ p: 2, bgcolor: "grey.900", maxHeight: 250, overflow: "auto" }}>
-                  <Typography variant="body2" component="pre" sx={{ fontFamily: "monospace", fontSize: "0.75rem", color: "grey.100", whiteSpace: "pre-wrap" }}>
-                    {liveLogs?.batsim || experiment.batsim_logs}
-                  </Typography>
-                </Paper>
-              </Box>
-            )}
-
-            {(liveLogs?.pybatsim || experiment.pybatsim_logs) && (
-              <Box>
-                <Typography variant="subtitle1" fontWeight={600} gutterBottom>PyBatsim Logs</Typography>
-                <Paper sx={{ p: 2, bgcolor: "grey.900", maxHeight: 250, overflow: "auto" }}>
-                  <Typography variant="body2" component="pre" sx={{ fontFamily: "monospace", fontSize: "0.75rem", color: "grey.100", whiteSpace: "pre-wrap" }}>
-                    {liveLogs?.pybatsim || experiment.pybatsim_logs}
-                  </Typography>
-                </Paper>
-              </Box>
-            )}
-
-            {!liveLogs?.batsim && !liveLogs?.pybatsim && !experiment.batsim_logs && !experiment.pybatsim_logs && (
-              <Typography color="text.secondary">No logs available yet.</Typography>
-            )}
-          </Stack>
+          <LogStreamViewer
+            experimentId={experiment.id}
+            live={experiment.status === "running"}
+          />
         </TabPanel>
       </DialogContent>
       <DialogActions>
