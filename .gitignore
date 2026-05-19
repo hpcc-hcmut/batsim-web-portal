@@ -1,2 +1,8 @@
 backend/batsim.db
+backend/batsim.db.bak-*
 backend/storage/
+backend/plans/
+__pycache__/
+repomix-output.xml
+output-verify/
+samples/results/
