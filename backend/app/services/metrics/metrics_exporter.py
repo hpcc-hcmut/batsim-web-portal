@@ -117,6 +117,43 @@ container_memory_limit_bytes = Gauge(
     registry=REGISTRY,
 )
 
+# --- Live progress metrics (populated by progress_parser thread, Task 7.5) ---
+
+live_jobs_submitted = Gauge(
+    "batsim_live_jobs_submitted",
+    "Jobs submitted so far in this running experiment",
+    ["experiment_id"],
+    registry=REGISTRY,
+)
+
+live_jobs_completed = Gauge(
+    "batsim_live_jobs_completed",
+    "Jobs completed so far in this running experiment",
+    ["experiment_id"],
+    registry=REGISTRY,
+)
+
+live_jobs_running = Gauge(
+    "batsim_live_jobs_running",
+    "Jobs currently in flight (submitted - completed - failed)",
+    ["experiment_id"],
+    registry=REGISTRY,
+)
+
+live_jobs_failed = Gauge(
+    "batsim_live_jobs_failed",
+    "Jobs killed/timeouted/failed so far in this running experiment",
+    ["experiment_id"],
+    registry=REGISTRY,
+)
+
+last_sim_time_seconds = Gauge(
+    "batsim_last_sim_time_seconds",
+    "Most recent simulation-time observed in batsim_stdout",
+    ["experiment_id"],
+    registry=REGISTRY,
+)
+
 
 def get_metrics_app():
     """Return a WSGI app that serves /metrics for Prometheus scraping."""
