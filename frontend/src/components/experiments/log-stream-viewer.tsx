@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Box,
   Tabs,
@@ -9,8 +9,10 @@ import {
   Alert,
   Skeleton,
   Typography,
+  Tooltip,
+  ToggleButton,
 } from "@mui/material";
-import { Refresh, Download } from "@mui/icons-material";
+import { Refresh, Download, KeyboardArrowDown } from "@mui/icons-material";
 import { experimentsAPI } from "../../services/api";
 import { renderLine } from "./log-line-renderer";
 
@@ -47,14 +49,22 @@ function formatSize(bytes: number): string {
 export interface LogStreamViewerProps {
   experimentId: number;
   live: boolean; // drives 5s auto-refresh when RUNNING
+  showProgressHeader?: boolean; // default true; set false to skip (not used here — strip is in parent)
 }
 
-export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({ experimentId, live }) => {
+export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({
+  experimentId,
+  live,
+}) => {
   const [streams, setStreams] = useState<StreamsState | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
+  // Auto-tail: default ON when live
+  const [tailEnabled, setTailEnabled] = useState(live);
+  // Ref to the scrollable content box
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const fetchStreams = useCallback(async () => {
     try {
@@ -82,6 +92,18 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({ experimentId, 
     return () => clearInterval(id);
   }, [live, fetchStreams]);
 
+  // Re-arm tailEnabled when live prop changes to true
+  useEffect(() => {
+    if (live) setTailEnabled(true);
+  }, [live]);
+
+  // Reset scroll ref + tail-state on tab change
+  const handleTabChange = (_: React.SyntheticEvent, v: number) => {
+    setActiveTab(v as number);
+    setSearchTerm("");
+    if (live) setTailEnabled(true);
+  };
+
   const activeKey = STREAM_KEYS[activeTab];
   const activeStream = streams?.[activeKey];
 
@@ -94,6 +116,21 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({ experimentId, 
     if (filtered.length === 0) return null;
     return filtered.map((line, i) => renderLine(line, i + 1));
   }, [activeStream?.content, searchTerm]);
+
+  // Auto-scroll to bottom when content updates and tail is armed
+  useEffect(() => {
+    if (!live || !tailEnabled || !scrollRef.current) return;
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [renderedLines, tailEnabled, live]);
+
+  // Detect user scrolling up to disarm tail
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+    if (!atBottom && tailEnabled) {
+      setTailEnabled(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -113,7 +150,7 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({ experimentId, 
       <Box sx={{ borderBottom: 1, borderColor: "divider" }}>
         <Tabs
           value={activeTab}
-          onChange={(_, v) => { setActiveTab(v as number); setSearchTerm(""); }}
+          onChange={handleTabChange}
           variant="scrollable"
           scrollButtons="auto"
         >
@@ -159,6 +196,29 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({ experimentId, 
         >
           Download .txt
         </Button>
+        {/* Auto-tail toggle — only meaningful when live */}
+        {live && (
+          <Tooltip title={tailEnabled ? "Auto-scroll to bottom (ON — click to pause)" : "Auto-scroll paused (click to re-arm)"}>
+            <ToggleButton
+              size="small"
+              selected={tailEnabled}
+              value="tail"
+              onChange={() => {
+                const next = !tailEnabled;
+                setTailEnabled(next);
+                // Immediately scroll to bottom when re-arming
+                if (next && scrollRef.current) {
+                  scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                }
+              }}
+              aria-label="auto-scroll to bottom"
+              aria-pressed={tailEnabled}
+              sx={{ ml: 1, height: 30, px: 1 }}
+            >
+              <KeyboardArrowDown fontSize="small" />
+            </ToggleButton>
+          </Tooltip>
+        )}
         {live && (
           <Chip label="LIVE" color="success" size="small" sx={{ ml: "auto" }} />
         )}
@@ -171,6 +231,8 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({ experimentId, 
       )}
 
       <Box
+        ref={scrollRef}
+        onScroll={handleScroll}
         sx={{
           flex: 1,
           overflow: "auto",

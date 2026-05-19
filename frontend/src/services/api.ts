@@ -111,6 +111,11 @@ export interface Experiment {
   error_message?: string;
   container_network?: string;
   created_by?: number;
+  live_jobs_submitted?: number;
+  live_jobs_completed?: number;
+  live_jobs_running?: number;
+  live_jobs_failed?: number;
+  last_sim_time?: number;
   created_at: string;
   updated_at?: string;
   scenario_name?: string;
@@ -444,6 +449,22 @@ export const experimentsAPI = {
   > => api.get(`/experiments/${id}/logs/streams`),
   downloadLogStreamUrl: (id: number, stream: string): string =>
     `${API_BASE_URL}/experiments/${id}/logs/streams/${stream}/download`,
+  getProgress: (
+    id: number,
+    history: boolean = false,
+  ): Promise<AxiosResponse<{
+    live_jobs_submitted: number;
+    live_jobs_completed: number;
+    live_jobs_running: number;
+    live_jobs_failed: number;
+    last_sim_time: number;
+    progress_percentage: number;
+    total_jobs: number | null;
+    completed_jobs: number | null;
+    wall_seconds: number;
+    live: boolean;
+    history?: Array<[number, number]>;
+  }>> => api.get(`/experiments/${id}/progress`, { params: history ? { history: 1 } : {} }),
 };
 
 // Results API

@@ -1,6 +1,7 @@
 """Experiment API endpoints — CRUD, lifecycle, and simulation orchestration."""
 
 from typing import List
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 import json
@@ -134,6 +135,32 @@ def create_experiment(
         db.delete(exp)
         db.commit()
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Populate total_jobs from workload JSON (Task 7.5 — enables live % during run)
+    # Tries DB column first; falls back to the frozen workload file on disk
+    try:
+        workload = scenario.workload if scenario else None
+        if workload and workload.jobs:
+            jobs_arr = json.loads(workload.jobs)
+            if isinstance(jobs_arr, list):
+                exp.total_jobs = len(jobs_arr)
+                db.commit()
+        else:
+            # Fallback: parse frozen workload file (contains {"jobs": [...], ...})
+            frozen_data = json.loads(exp.frozen_config) if exp.frozen_config else {}
+            workload_path = frozen_data.get("frozen_files", {}).get("workload_path", "")
+            if workload_path and os.path.exists(workload_path):
+                with open(workload_path, "r") as f:
+                    wl = json.load(f)
+                if isinstance(wl.get("jobs"), list):
+                    exp.total_jobs = len(wl["jobs"])
+                    db.commit()
+    except Exception as e:
+        import logging as _logging
+        _logging.getLogger(__name__).debug(
+            f"[create_experiment {exp.id}] could not pre-populate total_jobs: {e}"
+        )
+        # Leave total_jobs NULL; parser will display "?" in header strip
 
     return exp
 
@@ -280,6 +307,79 @@ def get_experiment_status(
         "frozen_config": frozen,
         "error_message": exp.error_message,
     }
+
+
+@router.get("/{experiment_id}/progress")
+def get_experiment_progress(
+    experiment_id: int,
+    history: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Live progress snapshot — polled every ~2s by the frontend during RUNNING.
+
+    Returns cumulative job counters from the in-memory parser state (RUNNING)
+    or from DB columns (non-RUNNING). Pass ?history=1 to also receive the
+    in-memory ring buffer as [[wall_s, completed], ...] for the sparkline.
+
+    Task 7.5 — Live Progress Tracking.
+    """
+    exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if exp is None:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if exp.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+
+    # Compute wall_seconds (handles naive datetimes stored by SQLite)
+    started = exp.start_time
+    if started and started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    wall = (datetime.now(timezone.utc) - started).total_seconds() if started else 0.0
+
+    # For RUNNING experiments, prefer in-memory state (more up-to-date than DB)
+    live_state = None
+    if exp.status == ExperimentStatus.RUNNING:
+        from app.services.orchestrator.progress_parser import get_state
+        live_state = get_state(experiment_id)
+
+    if live_state is not None:
+        payload = {
+            "live_jobs_submitted": live_state.submitted,
+            "live_jobs_completed": live_state.completed,
+            "live_jobs_running":   live_state.running,
+            "live_jobs_failed":    live_state.failed,
+            "last_sim_time":       live_state.last_sim_time,
+            "progress_percentage": (
+                min(100, int(live_state.completed * 100 / exp.total_jobs))
+                if exp.total_jobs and exp.total_jobs > 0 else 0
+            ),
+            "total_jobs":          exp.total_jobs or 0,
+            "completed_jobs":      live_state.completed,
+            "wall_seconds":        round(live_state.wall_seconds, 2),
+            "status":              exp.status.value,
+            "live":                True,
+        }
+        if history:
+            from app.services.orchestrator.progress_parser import get_history
+            payload["history"] = get_history(experiment_id)
+    else:
+        payload = {
+            "live_jobs_submitted": exp.live_jobs_submitted or 0,
+            "live_jobs_completed": exp.live_jobs_completed or 0,
+            "live_jobs_running":   exp.live_jobs_running or 0,
+            "live_jobs_failed":    exp.live_jobs_failed or 0,
+            "last_sim_time":       exp.last_sim_time or 0.0,
+            "progress_percentage": exp.progress_percentage or 0,
+            "total_jobs":          exp.total_jobs or 0,
+            "completed_jobs":      exp.completed_jobs or 0,
+            "wall_seconds":        round(wall, 2),
+            "status":              exp.status.value if hasattr(exp.status, "value") else str(exp.status),
+            "live":                False,
+        }
+        if history:
+            payload["history"] = []  # ring buffer lost after run; frontend caches last response
+
+    return payload
 
 
 # ---------------------------------------------------------------------------

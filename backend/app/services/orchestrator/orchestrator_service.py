@@ -80,6 +80,13 @@ def _run_experiment_thread(experiment_id: int):
         )
         experiments_failed_total.inc()
     finally:
+        # Stop progress parser thread (Task 7.5) — before container cleanup so it can
+        # do a final DB flush while containers still exist
+        try:
+            from app.services.orchestrator.progress_parser import stop_parser
+            stop_parser(experiment_id)
+        except Exception as e:
+            logger.debug(f"[Exp {experiment_id}] Parser stop failed: {e}")
         # Collect logs before cleanup (don't let log errors block cleanup)
         try:
             _save_logs(db, experiment_id, manager)
@@ -165,6 +172,11 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
         batsim_id = manager.start_batsim(workload_path, platform_path, exp_dir)
         exp.batsim_container_id = batsim_id
         db.commit()
+
+        # 4.5. Start live progress parser thread (Task 7.5)
+        from app.services.orchestrator.progress_parser import start_parser
+        if manager.batsim_container is not None:
+            start_parser(experiment_id, manager.batsim_container)
 
         # 5. Wait for completion
         result = manager.wait_for_completion(timeout=settings.SIMULATION_TIMEOUT_SECONDS)

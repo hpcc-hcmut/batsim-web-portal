@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, event
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, event, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -38,6 +38,13 @@ class Experiment(Base):
     total_jobs = Column(Integer)
     completed_jobs = Column(Integer, default=0)
     progress_percentage = Column(Integer, default=0)
+
+    # Live progress (Task 7.5 — populated by progress_parser thread during RUNNING)
+    live_jobs_submitted = Column(Integer, default=0)   # cumulative submitted count from batsim_stdout
+    live_jobs_completed = Column(Integer, default=0)   # cumulative completed count from batsim_stdout
+    live_jobs_running = Column(Integer, default=0)     # derived: submitted - completed - failed
+    live_jobs_failed = Column(Integer, default=0)      # killed/walltime-reached jobs (v2; 0 in v1)
+    last_sim_time = Column(Float, default=0.0)         # batsim simulation-time (virtual seconds)
 
     # Configuration
     config = Column(Text)  # JSON string of experiment configuration

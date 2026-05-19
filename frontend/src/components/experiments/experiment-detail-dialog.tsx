@@ -18,6 +18,7 @@ import {
 import { Science, PlayArrow, Stop, Dashboard } from "@mui/icons-material";
 import { Experiment, systemAPI } from "../../services/api";
 import { LogStreamViewer } from "./log-stream-viewer";
+import { ProgressHeaderStrip } from "./progress-header-strip";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -210,10 +211,16 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
 
         {/* Logs Tab */}
         <TabPanel value={tabValue} index={2}>
-          <LogStreamViewer
-            experimentId={experiment.id}
-            live={experiment.status === "running"}
-          />
+          <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <ProgressHeaderStrip
+              experimentId={experiment.id}
+              live={experiment.status === "running"}
+            />
+            <LogStreamViewer
+              experimentId={experiment.id}
+              live={experiment.status === "running"}
+            />
+          </Box>
         </TabPanel>
       </DialogContent>
       <DialogActions>
