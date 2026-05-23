@@ -157,6 +157,90 @@ export interface Result {
   computed_metrics?: string; // JSON string
 }
 
+// Workload summary — aggregate stats without shipping the full jobs blob.
+// Backed by GET /workloads/{id}/summary.
+export interface WorkloadSummary {
+  workload_id: number;
+  name: string;
+  nb_res?: number;
+  n_jobs: number;
+  n_profiles: number;
+  min_walltime?: number | null;
+  max_walltime?: number | null;
+  mean_walltime?: number | null;
+  total_walltime?: number | null;
+  min_res?: number | null;
+  max_res?: number | null;
+  earliest_subtime?: number | null;
+  latest_subtime?: number | null;
+}
+
+// Paginated jobs slice for virtualized preview (GET /workloads/{id}/jobs?offset=&limit=).
+export interface WorkloadJobsPage {
+  workload_id: number;
+  offset: number;
+  limit: number;
+  total: number;
+  jobs: Array<Record<string, unknown>>;
+}
+
+// Replay timeline payload (GET /results/{id}/timeline). Series are shared time axis (jobs/util/queue).
+export interface TimelineJob {
+  job_id: string;
+  submission_time: number;
+  starting_time?: number | null;
+  finish_time?: number | null;
+  waiting_time?: number | null;
+  execution_time?: number | null;
+  turnaround_time?: number | null;
+  slowdown?: number | null;
+  requested_resources: number;
+  allocated_resources: number[];
+  success: boolean;
+  final_state?: string | null;
+}
+
+export interface TimelineSeriesPoint {
+  t: number;
+  value: number;
+}
+
+export interface TimelineResponse {
+  result_id: number;
+  total_jobs: number;
+  n_hosts: number;
+  makespan: number;
+  truncated: boolean;
+  jobs: TimelineJob[];
+  utilization_series: TimelineSeriesPoint[];
+  queue_series: TimelineSeriesPoint[];
+  waiting_cdf: TimelineSeriesPoint[];
+}
+
+// PyBatSim runtime manifest (GET /system/runtime). 503 detail uses RuntimeManifestError shape.
+export interface RuntimeLib {
+  name: string;
+  version: string;
+}
+
+export interface RuntimeInfo {
+  image: string;
+  base_image: string;
+  python_version: string;
+  pybatsim_version: string;
+  available_libs: RuntimeLib[];
+  policy?: string;
+}
+
+export interface RuntimeManifestError {
+  error: "runtime_manifest_unavailable";
+  message: string;
+  configured_path: string;
+  tried_paths: string[];
+  cause?: string | null;
+  hint?: string;
+}
+
 // Validation types returned by backend on 422
 export interface ValidationError {
   field: string;
@@ -278,6 +362,16 @@ export const workloadsAPI = {
   getAll: (params?: ListParams): Promise<AxiosResponse<Workload[]>> => api.get("/workloads/", { params }),
   getById: (id: number): Promise<AxiosResponse<Workload>> =>
     api.get(`/workloads/${id}`),
+  // Aggregate stats — call instead of parsing workload.jobs JSON on the client
+  getSummary: (id: number): Promise<AxiosResponse<WorkloadSummary>> =>
+    api.get(`/workloads/${id}/summary`),
+  // Paginated jobs slice — pair with VirtualJobList for >50-job previews
+  getJobs: (
+    id: number,
+    offset: number = 0,
+    limit: number = 50,
+  ): Promise<AxiosResponse<WorkloadJobsPage>> =>
+    api.get(`/workloads/${id}/jobs`, { params: { offset, limit } }),
   create: (formData: FormData): Promise<AxiosResponse<Workload>> =>
     api.post("/workloads/", formData, {
       headers: { "Content-Type": "multipart/form-data" },
@@ -478,6 +572,12 @@ export const resultsAPI = {
     api.get(`/results/compare/metrics?ids=${ids.join(",")}`),
   exportResult: (id: number, format: "json" | "csv" = "json") =>
     api.get(`/results/${id}/export?format=${format}`, { responseType: "blob" }),
+  // Replay tab data — Gantt jobs + utilization/queue/CDF series. `limit` triggers density mode.
+  getTimeline: (
+    id: number,
+    limit?: number,
+  ): Promise<AxiosResponse<TimelineResponse>> =>
+    api.get(`/results/${id}/timeline`, { params: limit ? { limit } : {} }),
 };
 
 // Templates API
@@ -511,6 +611,9 @@ export const systemAPI = {
       simulation_timeout_seconds: number;
     }>
   > => api.get("/system/config"),
+  // PyBatSim image manifest (libs + Python version). Returns 503 if image not built yet.
+  getRuntime: (): Promise<AxiosResponse<RuntimeInfo>> =>
+    api.get("/system/runtime"),
 };
 
 export default api;

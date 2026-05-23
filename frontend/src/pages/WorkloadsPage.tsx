@@ -41,12 +41,14 @@ import {
   extractValidationErrors,
   Workload,
   ValidationResponse,
+  WorkloadSummary,
 } from "../services/api";
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
 import FileDropzone from "../components/common/file-dropzone";
 import { formatRelativeTime } from "../utils/format-relative-time";
 import { SortMenu } from "../components/common/sort-menu";
 import { PaginationFooter } from "../components/common/pagination-footer";
+import { VirtualJobList } from "../components/common/virtual-job-list";
 import { useListQueryParams } from "../utils/use-list-query-params";
 import { WORKLOAD_SORTS } from "../config/sort-options";
 
@@ -87,6 +89,36 @@ const WorkloadsPage: React.FC = () => {
   const [expandedProfiles, setExpandedProfiles] = useState(false);
   const [validationResult, setValidationResult] =
     useState<ValidationResponse | null>(null);
+  const [summary, setSummary] = useState<WorkloadSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
+  // Load aggregate stats when drawer opens for an existing workload —
+  // avoids parsing the (potentially huge) jobs JSON blob client-side.
+  // Dep on selectedWorkload?.id (primitive) instead of the whole object so re-selecting
+  // the same row doesn't re-fire the fetch when React creates a fresh reference.
+  const selectedWorkloadId = selectedWorkload?.id;
+  useEffect(() => {
+    if (!drawerOpen || panelMode !== "view" || selectedWorkloadId == null) {
+      setSummary(null);
+      return;
+    }
+    let cancelled = false;
+    setSummaryLoading(true);
+    workloadsAPI
+      .getSummary(selectedWorkloadId)
+      .then((res) => {
+        if (!cancelled) setSummary(res.data);
+      })
+      .catch(() => {
+        if (!cancelled) setSummary(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [drawerOpen, panelMode, selectedWorkloadId]);
 
   useEffect(() => {
     const fetchWorkloads = async () => {
@@ -416,50 +448,59 @@ const WorkloadsPage: React.FC = () => {
             <Typography variant="subtitle2" sx={{ mb: 1 }}>
               <b>Workload Metadata</b>
             </Typography>
-            <Stack direction="row" spacing={2} mb={2}>
+            <Stack direction="row" spacing={1} mb={1} flexWrap="wrap" useFlexGap>
               <Chip
                 label={`nb_res: ${selectedWorkload.nb_res ?? "-"}`}
                 size="small"
                 color="secondary"
               />
               <Chip
-                label={`jobs: ${
-                  selectedWorkload.jobs
-                    ? JSON.parse(selectedWorkload.jobs).length
-                    : 0
-                }`}
+                label={`jobs: ${summary?.n_jobs ?? (summaryLoading ? "…" : "-")}`}
                 size="small"
                 color="secondary"
               />
               <Chip
-                label={`profiles: ${
-                  selectedWorkload.profiles
-                    ? Object.keys(JSON.parse(selectedWorkload.profiles)).length
-                    : 0
-                }`}
+                label={`profiles: ${summary?.n_profiles ?? (summaryLoading ? "…" : "-")}`}
                 size="small"
                 color="secondary"
               />
+              {summary?.mean_walltime != null && (
+                <Chip
+                  label={`mean walltime: ${summary.mean_walltime.toFixed(2)}s`}
+                  size="small"
+                  variant="outlined"
+                />
+              )}
+              {summary?.max_res != null && (
+                <Chip
+                  label={`max res: ${summary.max_res}`}
+                  size="small"
+                  variant="outlined"
+                />
+              )}
+              {summary?.latest_subtime != null && (
+                <Chip
+                  label={`time span: ${summary.latest_subtime.toFixed(0)}s`}
+                  size="small"
+                  variant="outlined"
+                />
+              )}
             </Stack>
             <Accordion
               expanded={expandedJobs}
               onChange={() => setExpandedJobs((v) => !v)}
+              slotProps={{ transition: { unmountOnExit: true } }}
             >
               <AccordionSummary expandIcon={<ExpandMore />}>
-                <Typography>Jobs</Typography>
+                <Typography>
+                  Jobs preview {summary?.n_jobs ? `(${summary.n_jobs} total)` : ""}
+                </Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Box sx={{ maxHeight: 180, overflow: "auto" }}>
-                  <pre style={{ fontSize: 12, margin: 0 }}>
-                    {selectedWorkload.jobs
-                      ? JSON.stringify(
-                          JSON.parse(selectedWorkload.jobs),
-                          null,
-                          2
-                        )
-                      : "No jobs"}
-                  </pre>
-                </Box>
+                {/* Lazy: VirtualJobList only mounts (and only hits the API) when accordion expanded */}
+                {expandedJobs && (
+                  <VirtualJobList workloadId={selectedWorkload.id} height={320} />
+                )}
               </AccordionDetails>
             </Accordion>
             <Accordion

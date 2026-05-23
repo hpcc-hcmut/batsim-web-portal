@@ -45,6 +45,7 @@ import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 import { formatRelativeTime } from "../utils/format-relative-time";
 import { SortMenu } from "../components/common/sort-menu";
 import { PaginationFooter } from "../components/common/pagination-footer";
+import { RuntimeLibsBanner } from "../components/common/runtime-libs-banner";
 import { useListQueryParams } from "../utils/use-list-query-params";
 import { STRATEGY_SORTS } from "../config/sort-options";
 
@@ -280,6 +281,7 @@ const StrategiesPage: React.FC = () => {
         <Typography variant="h4" fontWeight={900} gutterBottom>
           Strategies
         </Typography>
+        <RuntimeLibsBanner />
         <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={2} sx={{ mb: 3, width: "100%" }}>
           <Button
             variant="contained"
