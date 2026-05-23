@@ -10,6 +10,7 @@ from app.core.workload_helpers import (
     parse_workload_payload,
     compute_summary,
     slice_jobs,
+    WorkloadPayloadTooLarge,
 )
 from app.models.user import User
 from app.models.workload import Workload
@@ -34,6 +35,23 @@ WORKLOAD_SORT_FIELDS = {"id", "name", "created_at", "updated_at", "file_size"}
 
 def ensure_storage_directory():
     os.makedirs(STORAGE_DIR, exist_ok=True)
+
+
+def _enforce_upload_size(file: UploadFile) -> None:
+    """Reject uploads larger than settings.MAX_FILE_SIZE before they touch disk.
+
+    file.size is set by Starlette during multipart parsing for normal client uploads.
+    If size is unknown (None) we let the request through — the downstream JSON parser
+    will still refuse blobs over workload_helpers.MAX_PARSE_BYTES.
+    """
+    if file.size is not None and file.size > settings.MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"File too large: {file.size} bytes exceeds limit "
+                f"{settings.MAX_FILE_SIZE} bytes ({settings.MAX_FILE_SIZE // (1024 * 1024)} MB)"
+            ),
+        )
 
 
 def _parse_and_validate_workload(file_path: str, filename: str):
@@ -95,7 +113,10 @@ def get_workload_summary(
     if workload is None:
         raise HTTPException(status_code=404, detail="Workload not found")
 
-    jobs, profiles = parse_workload_payload(workload.jobs, workload.profiles)
+    try:
+        jobs, profiles = parse_workload_payload(workload.jobs, workload.profiles)
+    except WorkloadPayloadTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc))
     stats = compute_summary(jobs, profiles)
     return WorkloadSummary(
         workload_id=workload.id,
@@ -119,7 +140,12 @@ def get_workload_jobs(
     if workload is None:
         raise HTTPException(status_code=404, detail="Workload not found")
 
-    jobs, _ = parse_workload_payload(workload.jobs, None)
+    # Pass both jobs + profiles so the lru_cache key matches /summary's call,
+    # avoiding a duplicate parse when the UI opens a drawer that fetches both.
+    try:
+        jobs, _ = parse_workload_payload(workload.jobs, workload.profiles)
+    except WorkloadPayloadTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc))
     total = len(jobs)
     page = slice_jobs(jobs, offset, limit)
     set_total_count(response, total)
@@ -145,6 +171,9 @@ async def create_workload(
     # Check duplicate name
     if db.query(Workload).filter(Workload.name == name).first():
         raise HTTPException(status_code=400, detail="Workload with this name already exists")
+
+    # Reject oversized uploads before they touch disk or the JSON parser
+    _enforce_upload_size(file)
 
     # Check file extension
     if not (file.content_type == "application/json" or file.filename.endswith(".json")):
@@ -279,6 +308,7 @@ async def update_workload_file(
         workload.description = description
 
     if file is not None:
+        _enforce_upload_size(file)
         ensure_storage_directory()
         # Save new file first (sanitize filename)
         safe_name = sanitize_filename(f"{workload.name}_{file.filename}")

@@ -22,7 +22,7 @@ from app.schemas.result import (
     TimelineResponse,
 )
 from app.api.auth import get_current_user
-from app.services.post_processing.result_processor import derive_timeline_aggregates
+from app.services.post_processing.timeline import derive_timeline_aggregates
 
 logger = logging.getLogger(__name__)
 

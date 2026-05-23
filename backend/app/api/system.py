@@ -5,7 +5,7 @@ import logging
 import os
 from functools import lru_cache
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from app.core.config import settings
 from app.models.user import User
 from app.api.auth import get_current_user
@@ -29,16 +29,13 @@ def get_public_config(current_user: User = Depends(get_current_user)):
     }
 
 
-# Fallback used when the runtime-info.json file is missing (e.g. running backend
-# outside the repo). Keeps the API contract stable for the frontend.
-_RUNTIME_FALLBACK = {
-    "image": settings.PYBATSIM_IMAGE,
-    "base_image": "tanaxer/pybatsim:latest",
-    "python_version": "3.10",
-    "pybatsim_version": "4.x",
-    "available_libs": [],
-    "policy": "Runtime manifest file not found — operator must build the extended image (see docker/pybatsim-extended/README.md).",
-}
+class _ManifestLoadError(Exception):
+    """Internal signal: manifest file missing or unreadable. Endpoint maps to HTTP 503."""
+
+    def __init__(self, message: str, tried: list[str], cause: str | None = None) -> None:
+        super().__init__(message)
+        self.tried = tried
+        self.cause = cause
 
 
 def _candidate_manifest_paths(configured: str) -> list[str]:
@@ -61,16 +58,31 @@ def _candidate_manifest_paths(configured: str) -> list[str]:
 
 @lru_cache(maxsize=1)
 def _load_runtime_manifest() -> dict:
-    """Read docker/pybatsim-extended/runtime-info.json once and cache the result."""
+    """Read docker/pybatsim-extended/runtime-info.json once and cache the result.
+
+    Raises _ManifestLoadError if file missing or unreadable — endpoint maps to HTTP 503
+    so the UI shows a clear actionable message instead of silently rendering empty libs.
+    """
+    tried: list[str] = []
     for candidate in _candidate_manifest_paths(settings.PYBATSIM_RUNTIME_INFO_PATH):
-        if candidate and os.path.exists(candidate):
+        if not candidate:
+            continue
+        tried.append(candidate)
+        if os.path.exists(candidate):
             try:
                 with open(candidate, "r", encoding="utf-8") as f:
                     return json.load(f)
             except (OSError, json.JSONDecodeError) as exc:
                 logger.warning("Failed to read runtime manifest at %s: %s", candidate, exc)
-                break
-    return _RUNTIME_FALLBACK
+                raise _ManifestLoadError(
+                    f"Runtime manifest at {candidate} is unreadable",
+                    tried=tried,
+                    cause=str(exc),
+                ) from exc
+    raise _ManifestLoadError(
+        "Runtime manifest file not found — build the extended PyBatSim image first.",
+        tried=tried,
+    )
 
 
 @router.get("/runtime")
@@ -79,5 +91,25 @@ def get_runtime_info(current_user: User = Depends(get_current_user)):
 
     Frontend uses this on the Strategy upload page to display "Available libraries: ..." banner,
     so users discover allowed imports before hitting an ImportError at simulation start.
+
+    Returns 503 with a structured error when the manifest is missing/unreadable so the
+    operator gets an actionable message instead of a misleading empty libs list.
     """
-    return _load_runtime_manifest()
+    try:
+        return _load_runtime_manifest()
+    except _ManifestLoadError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "runtime_manifest_unavailable",
+                "message": str(exc),
+                "configured_path": settings.PYBATSIM_RUNTIME_INFO_PATH,
+                "tried_paths": exc.tried,
+                "cause": exc.cause,
+                "hint": (
+                    "Build the extended PyBatSim image: "
+                    "`docker build -t batsim-portal/pybatsim-extended:1.0 docker/pybatsim-extended/`. "
+                    "Then ensure docker/pybatsim-extended/runtime-info.json is present in the repo."
+                ),
+            },
+        )

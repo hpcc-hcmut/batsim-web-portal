@@ -5,8 +5,20 @@ jobs we never want to ship the full blob to the UI. These helpers parse once and
 aggregate stats + paginated slices.
 """
 import json
+import logging
 from functools import lru_cache
 from typing import Any, Dict, List, Tuple
+
+logger = logging.getLogger(__name__)
+
+# Defensive ceiling on the JSON text we'll attempt to parse. Upload endpoint already
+# rejects files larger than settings.MAX_FILE_SIZE (100 MB), so this guard mainly
+# protects against malformed DB rows or future bypass paths. Bytes here = UTF-8 chars.
+MAX_PARSE_BYTES = 150 * 1024 * 1024  # 150 MB headroom above the upload limit
+
+
+class WorkloadPayloadTooLarge(ValueError):
+    """Raised when parse_workload_payload refuses to load a >MAX_PARSE_BYTES blob."""
 
 
 def _safe_parse(jobs_text: str | None, profiles_text: str | None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
@@ -31,16 +43,34 @@ def _safe_parse(jobs_text: str | None, profiles_text: str | None) -> Tuple[List[
 
 
 @lru_cache(maxsize=32)
-def _parse_cached(jobs_text_hash: str, jobs_text: str | None, profiles_text: str | None):
-    # The hash arg makes the LRU cache key explicit (in case jobs_text is huge);
-    # callers pass a short stable digest so we don't keep many MB strings as keys.
-    return _safe_parse(jobs_text, profiles_text)
-
-
 def parse_workload_payload(jobs_text: str | None, profiles_text: str | None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Public entry — parses with a small LRU cache. For lab-scale, simple hash key is enough."""
-    digest_key = f"{len(jobs_text or '')}:{len(profiles_text or '')}"
-    return _parse_cached(digest_key, jobs_text, profiles_text)
+    """Parse jobs + profiles JSON with a small LRU cache.
+
+    `functools.lru_cache` already keys on the arguments themselves; we rely on that
+    and don't fabricate a separate digest. Cache is bounded to 32 entries — for
+    lab-scale workload counts that's more than enough, and Python interns the same
+    string object across hits via SQLAlchemy's identity map most of the time.
+
+    Raises WorkloadPayloadTooLarge if either string exceeds MAX_PARSE_BYTES — defends
+    against OOM if a future code path bypasses the upload size check.
+    """
+    if jobs_text and len(jobs_text) > MAX_PARSE_BYTES:
+        logger.warning(
+            "parse_workload_payload: jobs text size %d exceeds MAX_PARSE_BYTES=%d",
+            len(jobs_text), MAX_PARSE_BYTES,
+        )
+        raise WorkloadPayloadTooLarge(
+            f"jobs payload {len(jobs_text)} bytes exceeds limit {MAX_PARSE_BYTES}"
+        )
+    if profiles_text and len(profiles_text) > MAX_PARSE_BYTES:
+        logger.warning(
+            "parse_workload_payload: profiles text size %d exceeds MAX_PARSE_BYTES=%d",
+            len(profiles_text), MAX_PARSE_BYTES,
+        )
+        raise WorkloadPayloadTooLarge(
+            f"profiles payload {len(profiles_text)} bytes exceeds limit {MAX_PARSE_BYTES}"
+        )
+    return _safe_parse(jobs_text, profiles_text)
 
 
 def compute_summary(jobs: List[Dict[str, Any]], profiles: Dict[str, Any]) -> Dict[str, Any]:
