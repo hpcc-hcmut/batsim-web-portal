@@ -21,7 +21,8 @@ import {
   TableHead,
   TableRow,
 } from "@mui/material";
-import { CompareArrows } from "@mui/icons-material";
+import { CompareArrows, Download } from "@mui/icons-material";
+import { downloadCsv, CsvColumn } from "../utils/export-csv";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -140,6 +141,27 @@ const ComparePage: React.FC = () => {
 
   const completedExperiments = comparison ? comparison.filter((e) => e.has_result) : [];
 
+  // CSV export — flat row per experiment, columns = id/meta + every numeric metric.
+  // Null values stay empty so Excel doesn't render "0" for "not measured".
+  const handleExportCsv = () => {
+    if (!completedExperiments.length) return;
+    const columns: CsvColumn<Record<string, unknown>>[] = [
+      { key: "experiment_id", header: "experiment_id" },
+      { key: "experiment_name", header: "experiment_name" },
+      { key: "scenario_name", header: "scenario" },
+      { key: "strategy_name", header: "strategy" },
+      { key: "seed", header: "seed" },
+      ...Object.keys(METRIC_LABELS).map<CsvColumn<Record<string, unknown>>>((key) => ({
+        key,
+        header: METRIC_LABELS[key] || key,
+        format: (v) => (v === null || v === undefined ? "" : v as string | number),
+      })),
+    ];
+    const date = new Date().toISOString().slice(0, 10);
+    const ids = selectedIds.join("-");
+    downloadCsv(completedExperiments as Record<string, unknown>[], columns, `comparison-${date}-${ids}.csv`);
+  };
+
   // Build per-metric chart data — one Bar chart per metric (Phase 1 Option B: multi-panel)
   const perMetricBarData = (metric: string) => ({
     labels: completedExperiments.map((exp) => exp.experiment_name),
@@ -185,7 +207,7 @@ const ComparePage: React.FC = () => {
       <Stack direction="row" alignItems="center" spacing={2} mb={3}>
         <CompareArrows sx={{ fontSize: 32, color: "#4a9eff" }} />
         <Typography variant="h4" fontWeight={900}>
-          Compare Experiments
+          Experiment Comparison
         </Typography>
       </Stack>
 
@@ -222,6 +244,14 @@ const ComparePage: React.FC = () => {
             startIcon={<CompareArrows />}
           >
             {loading ? "Comparing..." : "Compare"}
+          </Button>
+          <Button
+            variant="outlined"
+            onClick={handleExportCsv}
+            disabled={!completedExperiments.length}
+            startIcon={<Download />}
+          >
+            Export CSV
           </Button>
         </Stack>
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}

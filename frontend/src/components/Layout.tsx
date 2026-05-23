@@ -49,7 +49,7 @@ const menuItems: NavItem[] = [
   { text: "Strategies", icon: <Code />, path: "/strategies" },
   { text: "Experiments", icon: <Science />, path: "/experiments" },
   { text: "Results", icon: <Assessment />, path: "/results" },
-  { text: "Compare", icon: <CompareArrows />, path: "/compare" },
+  { text: "Comparison", icon: <CompareArrows />, path: "/compare" },
   // Analytics page hidden — pending redesign for per-workload insights (see thesis C7 future work).
   // Route /analytics and AnalyticsPage component kept intact for future revisit.
   // { text: "Analytics", icon: <Analytics />, path: "/analytics" },

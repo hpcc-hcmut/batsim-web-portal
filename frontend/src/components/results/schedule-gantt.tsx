@@ -1,6 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from "react";
 import { Stage, Layer, Rect, Line, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
+import type Konva from "konva";
 import { Box, Stack, Typography } from "@mui/material";
 import { TimelineJob } from "../../services/api";
 import { useTimelineCursor } from "../../utils/timeline-cursor-context";
@@ -11,6 +12,13 @@ interface Props {
   makespan: number;
   width?: number;
   height?: number;
+  // Time-axis window — defaults to [0, makespan]. ReplayView's slider drives this.
+  tStart?: number;
+  tEnd?: number;
+  // Density mode: draw all bars via a single Layer.sceneFunc call instead of N React
+  // <Rect> components. Bypasses React-Konva reconciliation cost when bar count is
+  // large (>~2000) — at the price of losing per-bar event listeners.
+  density?: boolean;
 }
 
 // Visual tuning knobs — kept inline (not config) since they only affect this component.
@@ -24,15 +32,28 @@ const STATE_COLORS = {
 const TIME_AXIS_TICKS = 6;
 const HOST_LABEL_EVERY = 8; // skip labels when n_hosts is large to avoid clutter
 
+interface Bar {
+  key: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color: string;
+}
+
 /**
- * Gantt skeleton — renders job allocations as horizontal bars (one per allocated host)
- * on a canvas via react-konva. M2 keeps this intentionally minimal: bars + axes + cursor
- * broadcast on hover. M3 will add: tooltip on hover, click-to-highlight, time-range
- * slider zoom, density mode for >5k jobs.
+ * Gantt with two render paths:
  *
- * Coordinate system:
- *   x = PADDING.left + (t / makespan) * plotW   where plotW = width - L - R
- *   y = PADDING.top  + (hostIdx / nHosts) * plotH where plotH = height - T - B
+ *   1. Sparse path (default): each bar is a React `<Rect>` — clean event model, good
+ *      for ≤ ~2000 bars where reconciliation is cheap.
+ *   2. Density path (`density={true}` or auto when bar count blows past the cap):
+ *      a single Layer with a custom sceneFunc that draws all rects in one
+ *      `ctx.fillRect()` loop. No per-bar React nodes, no per-bar listeners — the
+ *      Konva Stage still tracks mouse for cursor broadcast.
+ *
+ * Coordinate system (with active window [tStart, tEnd]):
+ *   x = PADDING.left + (t - tStart) * xScale, where xScale = plotW / (tEnd - tStart)
+ *   y = PADDING.top  + (hostIdx / nHosts) * plotH
  */
 export function ScheduleGantt({
   jobs,
@@ -40,9 +61,11 @@ export function ScheduleGantt({
   makespan,
   width = 800,
   height = 360,
+  tStart,
+  tEnd,
+  density = false,
 }: Props) {
   const cursor = useTimelineCursor();
-  // Track container width so the chart fills its parent on resize.
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [measuredW, setMeasuredW] = useState(width);
 
@@ -61,23 +84,25 @@ export function ScheduleGantt({
   const H = height;
   const plotW = Math.max(50, W - PADDING.left - PADDING.right);
   const plotH = Math.max(50, H - PADDING.top - PADDING.bottom);
-  const xScale = makespan > 0 ? plotW / makespan : 0;
+
+  // Effective time window — fall back to [0, makespan] when slider hasn't supplied bounds.
+  const t0 = tStart ?? 0;
+  const t1 = tEnd ?? makespan ?? 0;
+  const tSpan = Math.max(1e-9, t1 - t0);
+  const xScale = plotW / tSpan;
   const yScale = nHosts > 0 ? plotH / nHosts : 0;
 
-  // Compute job bars once per render — flatMap allocations to one rect each.
-  const bars = useMemo(() => {
-    const out: Array<{
-      key: string;
-      x: number;
-      y: number;
-      w: number;
-      h: number;
-      color: string;
-    }> = [];
+  // Flatten jobs → bars (one per allocated host). Clipped to the visible window so the
+  // sceneFunc doesn't waste pixels drawing offscreen rects.
+  const bars = useMemo<Bar[]>(() => {
+    const out: Bar[] = [];
     for (const j of jobs) {
       if (j.starting_time == null || j.finish_time == null) continue;
-      const startX = PADDING.left + j.starting_time * xScale;
-      const w = Math.max(1, (j.finish_time - j.starting_time) * xScale);
+      const startT = Math.max(t0, j.starting_time);
+      const endT = Math.min(t1, j.finish_time);
+      if (endT <= startT) continue; // outside window
+      const x = PADDING.left + (startT - t0) * xScale;
+      const w = Math.max(1, (endT - startT) * xScale);
       const color = j.success
         ? STATE_COLORS.success
         : j.final_state?.includes("TIMEOUT")
@@ -92,7 +117,7 @@ export function ScheduleGantt({
         if (h < 0 || h >= nHosts) continue;
         out.push({
           key: `${j.job_id}-${h}`,
-          x: startX,
+          x,
           y: PADDING.top + h * yScale,
           w,
           h: Math.max(1, yScale - 1),
@@ -101,36 +126,31 @@ export function ScheduleGantt({
       }
     }
     return out;
-  }, [jobs, xScale, yScale, nHosts]);
+  }, [jobs, xScale, yScale, nHosts, t0, t1]);
 
-  // Time-axis ticks (evenly spaced labels along the bottom edge).
   const timeTicks = useMemo(() => {
-    if (makespan <= 0) return [];
     const ticks: Array<{ x: number; label: string }> = [];
     for (let i = 0; i <= TIME_AXIS_TICKS; i += 1) {
-      const t = (i / TIME_AXIS_TICKS) * makespan;
+      const t = t0 + (i / TIME_AXIS_TICKS) * tSpan;
       ticks.push({
-        x: PADDING.left + t * xScale,
+        x: PADDING.left + (t - t0) * xScale,
         label: t.toFixed(t < 100 ? 1 : 0),
       });
     }
     return ticks;
-  }, [makespan, xScale]);
+  }, [t0, tSpan, xScale]);
 
   const hostTicks = useMemo(() => {
     const ticks: Array<{ y: number; label: string }> = [];
     if (nHosts <= 0) return ticks;
     const step = nHosts <= 32 ? 1 : Math.ceil(nHosts / HOST_LABEL_EVERY);
     for (let i = 0; i < nHosts; i += step) {
-      ticks.push({
-        y: PADDING.top + i * yScale,
-        label: String(i),
-      });
+      ticks.push({ y: PADDING.top + i * yScale, label: String(i) });
     }
     return ticks;
   }, [nHosts, yScale]);
 
-  // Broadcast hover time so M3 line charts can highlight the same instant.
+  // Broadcast hover time so the line charts can highlight the same instant.
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
     const pos = e.target.getStage()?.getPointerPosition();
     if (!pos) return;
@@ -139,20 +159,47 @@ export function ScheduleGantt({
       cursor.setT(null);
       return;
     }
-    cursor.setT(x / xScale);
+    cursor.setT(t0 + x / xScale);
   };
+
+  // Density-mode sceneFunc — draws ALL bars in one fillRect loop, grouped by color
+  // to minimise context-state churn. React renders ONE node (the Layer); the actual
+  // pixels come from this hand-rolled paint pass.
+  const drawBarsScene = useMemo(() => {
+    return (ctx: Konva.Context) => {
+      const byColor = new Map<string, Bar[]>();
+      for (const b of bars) {
+        const list = byColor.get(b.color);
+        if (list) list.push(b);
+        else byColor.set(b.color, [b]);
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      for (const [color, group] of byColor.entries()) {
+        ctx.fillStyle = color;
+        for (const b of group) {
+          ctx.fillRect(b.x, b.y, b.w, b.h);
+        }
+      }
+      ctx.restore();
+    };
+  }, [bars]);
 
   return (
     <Box ref={wrapRef} sx={{ width: "100%" }}>
       <Stack direction="row" spacing={2} sx={{ mb: 0.5, alignItems: "baseline" }}>
         <Typography variant="caption" color="text.secondary">
-          {jobs.length} bar-segments · {nHosts} hosts · makespan {makespan.toFixed(2)}s
+          {bars.length} bar-segments · {nHosts} hosts · window {t0.toFixed(1)}s –{" "}
+          {t1.toFixed(1)}s {density ? "(density)" : ""}
         </Typography>
-        {cursor.t != null && (
-          <Typography variant="caption">t = {cursor.t.toFixed(2)}s</Typography>
-        )}
+        {cursor.t != null && <Typography variant="caption">t = {cursor.t.toFixed(2)}s</Typography>}
       </Stack>
-      <Stage width={W} height={H} onMouseMove={handleMouseMove} onMouseLeave={() => cursor.setT(null)}>
+      <Stage
+        width={W}
+        height={H}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => cursor.setT(null)}
+      >
         <Layer listening={false}>
           {/* plot background */}
           <Rect
@@ -171,7 +218,6 @@ export function ScheduleGantt({
               stroke="#eeeeee"
             />
           ))}
-          {/* host labels (left) */}
           {hostTicks.map((t) => (
             <Text
               key={`hl-${t.label}`}
@@ -183,16 +229,16 @@ export function ScheduleGantt({
             />
           ))}
           {/* time-axis ticks */}
-          {timeTicks.map((t) => (
+          {timeTicks.map((t, i) => (
             <Line
-              key={`tg-${t.label}`}
+              key={`tg-${i}`}
               points={[t.x, PADDING.top, t.x, PADDING.top + plotH]}
               stroke="#eeeeee"
             />
           ))}
-          {timeTicks.map((t) => (
+          {timeTicks.map((t, i) => (
             <Text
-              key={`tl-${t.label}`}
+              key={`tl-${i}`}
               x={t.x - 12}
               y={PADDING.top + plotH + 4}
               text={t.label}
@@ -201,26 +247,34 @@ export function ScheduleGantt({
             />
           ))}
         </Layer>
-        <Layer>
-          {bars.map((b) => (
+
+        {/* Bars — sparse path for low counts, sceneFunc density path otherwise */}
+        {density ? (
+          <Layer listening={false}>
             <Rect
-              key={b.key}
-              x={b.x}
-              y={b.y}
-              width={b.w}
-              height={b.h}
-              fill={b.color}
-              opacity={0.85}
+              x={0}
+              y={0}
+              width={W}
+              height={H}
+              sceneFunc={(ctx) => drawBarsScene(ctx)}
             />
-          ))}
-        </Layer>
-        {cursor.t != null && xScale > 0 && (
+          </Layer>
+        ) : (
+          <Layer listening={false}>
+            {bars.map((b) => (
+              <Rect key={b.key} x={b.x} y={b.y} width={b.w} height={b.h} fill={b.color} opacity={0.85} />
+            ))}
+          </Layer>
+        )}
+
+        {/* cursor */}
+        {cursor.t != null && cursor.t >= t0 && cursor.t <= t1 && (
           <Layer listening={false}>
             <Line
               points={[
-                PADDING.left + cursor.t * xScale,
+                PADDING.left + (cursor.t - t0) * xScale,
                 PADDING.top,
-                PADDING.left + cursor.t * xScale,
+                PADDING.left + (cursor.t - t0) * xScale,
                 PADDING.top + plotH,
               ]}
               stroke="#1976d2"

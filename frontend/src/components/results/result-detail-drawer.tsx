@@ -4,7 +4,6 @@ import {
   Typography,
   Chip,
   Stack,
-  Button,
   Drawer,
   IconButton,
   Divider,
@@ -12,6 +11,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  Tab,
+  Tabs,
 } from "@mui/material";
 import {
   Delete,
@@ -23,6 +24,8 @@ import {
   PlayArrow,
 } from "@mui/icons-material";
 import { Result } from "../../services/api";
+import { ReplayView } from "./replay-view";
+import { ErrorBoundary } from "../common/error-boundary";
 
 // Helpers shared with parent
 export function formatMetric(value: number | undefined, unit: string = "") {
@@ -58,6 +61,13 @@ const ResultDetailDrawer: React.FC<ResultDetailDrawerProps> = ({
 }) => {
   const [expandedJobs, setExpandedJobs] = useState(false);
   const [expandedSchedule, setExpandedSchedule] = useState(false);
+  const [tab, setTab] = useState(0);
+
+  // Drawer widens significantly when Replay tab is active so the Gantt + charts have
+  // room to breathe; Summary stays narrow so the side-by-side reading flow remains.
+  const drawerWidth = tab === 1
+    ? { xs: "100%", md: "90vw", lg: "1100px" }
+    : { xs: "100%", md: 420 };
 
   return (
     <Drawer
@@ -65,13 +75,29 @@ const ResultDetailDrawer: React.FC<ResultDetailDrawerProps> = ({
       open={open}
       onClose={onClose}
       PaperProps={{
-        sx: { width: { xs: "100%", md: 420 }, p: 3, background: "#1a202c" },
+        sx: { width: drawerWidth, p: 3, background: "#1a202c" },
       }}
     >
-      <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-        <Typography variant="h6" fontWeight={900} sx={{ flex: 1 }}>
+      <Box sx={{ display: "flex", alignItems: "center", mb: 2, gap: 1 }}>
+        <Typography variant="h6" fontWeight={900} sx={{ flex: 1, minWidth: 0 }} noWrap>
           {result?.experiment_name || "Result Details"}
         </Typography>
+        {result && (
+          <>
+            {/* Result-level actions live in the header so they're reachable regardless
+                of which tab the researcher is currently viewing. */}
+            <Tooltip title="Rerun experiment">
+              <IconButton size="small" onClick={onRerun} color="primary">
+                <PlayArrow />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Delete result">
+              <IconButton size="small" onClick={onDelete} color="error">
+                <Delete />
+              </IconButton>
+            </Tooltip>
+          </>
+        )}
         <IconButton onClick={onClose}>
           <Close />
         </IconButton>
@@ -99,6 +125,26 @@ const ResultDetailDrawer: React.FC<ResultDetailDrawerProps> = ({
             <Chip label={result.strategy_name || "Strategy"} size="small" color="primary" />
             <Chip label={result.created_at?.split("T")[0]} size="small" color="default" />
           </Stack>
+
+          <Tabs
+            value={tab}
+            onChange={(_, v) => setTab(v)}
+            sx={{ mb: 2, borderBottom: 1, borderColor: "divider" }}
+          >
+            <Tab label="Summary" />
+            <Tab label="Replay" />
+          </Tabs>
+
+          {tab === 1 && (
+            // Per-tab ErrorBoundary so a Gantt/timeline crash doesn't blank the Summary
+            // half of the drawer or kill the whole results page.
+            <ErrorBoundary scope="Replay">
+              <ReplayView resultId={result.id} />
+            </ErrorBoundary>
+          )}
+
+          {tab === 0 && (
+            <>
           <Divider sx={{ my: 2 }} />
 
           {/* Key Metrics */}
@@ -186,26 +232,8 @@ const ResultDetailDrawer: React.FC<ResultDetailDrawerProps> = ({
             </AccordionDetails>
           </Accordion>
 
-          <Stack direction="row" spacing={2} mt={3}>
-            <Button
-              variant="outlined"
-              color="primary"
-              startIcon={<PlayArrow />}
-              onClick={onRerun}
-              sx={{ fontWeight: 700, borderRadius: 1 }}
-            >
-              Rerun Experiment
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<Delete />}
-              onClick={onDelete}
-              sx={{ fontWeight: 700, borderRadius: 1 }}
-            >
-              Delete
-            </Button>
-          </Stack>
+            </>
+          )}
         </>
       )}
     </Drawer>
