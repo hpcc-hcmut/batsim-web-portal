@@ -1,0 +1,15 @@
+{
+  "image": "batsim-portal/pybatsim-extended:1.0",
+  "base_image": "tanaxer/pybatsim:latest",
+  "python_version": "3.10",
+  "pybatsim_version": "4.x",
+  "available_libs": [
+    { "name": "numpy", "version": "1.26.4" },
+    { "name": "scipy", "version": "1.13.0" },
+    { "name": "networkx", "version": "3.3" },
+    { "name": "pandas", "version": "2.2.2" },
+    { "name": "sortedcontainers", "version": "2.4.0" },
+    { "name": "more-itertools", "version": "10.2.0" }
+  ],
+  "policy": "Runtime pip install is NOT supported. Contact the operator to add a new library via this Dockerfile."
+}

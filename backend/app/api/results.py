@@ -19,8 +19,10 @@ from app.schemas.result import (
     ResultCreate,
     ResultUpdate,
     ResultWithExperiment,
+    TimelineResponse,
 )
 from app.api.auth import get_current_user
+from app.services.post_processing.result_processor import derive_timeline_aggregates
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +387,35 @@ def delete_result(
     db.delete(res)
     db.commit()
     return {"message": "Result deleted successfully"}
+
+
+@router.get("/{result_id}/timeline", response_model=TimelineResponse)
+def get_result_timeline(
+    result_id: int,
+    limit: Optional[int] = Query(None, ge=1, le=20000, description="Cap jobs list (frontend density mode uses this)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Return Gantt-ready jobs + utilization/queue/waiting-CDF series for the Replay tab."""
+    result = db.query(Result).filter(Result.id == result_id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not found")
+
+    if not result.jobs_data:
+        raise HTTPException(status_code=404, detail="Result has no jobs data (out_jobs.csv missing)")
+
+    n_hosts_hint = None
+    if result.computed_metrics:
+        try:
+            cm = json.loads(result.computed_metrics)
+            nb_machines = cm.get("nb_computing_machines")
+            if isinstance(nb_machines, int) and nb_machines > 0:
+                n_hosts_hint = nb_machines
+        except json.JSONDecodeError:
+            pass
+
+    data = derive_timeline_aggregates(result.jobs_data, n_hosts_hint=n_hosts_hint, limit=limit)
+    return TimelineResponse(result_id=result.id, **data)
 
 
 @router.get("/{result_id}/export")

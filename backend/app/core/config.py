@@ -15,8 +15,14 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE: int = 100 * 1024 * 1024  # 100MB
 
     # Docker — BatSim images
+    # PYBATSIM_IMAGE defaults to the extended image (numpy/scipy/networkx/pandas pre-installed).
+    # Build with: docker build -t batsim-portal/pybatsim-extended:1.0 docker/pybatsim-extended/
+    # Override via .env to use upstream tanaxer/pybatsim:latest if the extended build is unavailable.
     BATSIM_IMAGE: str = "oarteam/batsim:latest"
-    PYBATSIM_IMAGE: str = "tanaxer/pybatsim:latest"
+    PYBATSIM_IMAGE: str = "batsim-portal/pybatsim-extended:1.0"
+    # Path to the runtime manifest (libs available inside PyBatSim container).
+    # Backend reads this to expose /system/runtime so the UI can show "Available libraries: ..."
+    PYBATSIM_RUNTIME_INFO_PATH: str = "./docker/pybatsim-extended/runtime-info.json"
 
     # Simulation
     MAX_CONCURRENT_SIMULATIONS: int = 3

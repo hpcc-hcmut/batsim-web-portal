@@ -6,12 +6,19 @@ import shutil
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.list_helpers import apply_sort, set_total_count
+from app.core.workload_helpers import (
+    parse_workload_payload,
+    compute_summary,
+    slice_jobs,
+)
 from app.models.user import User
 from app.models.workload import Workload
 from app.schemas.workload import (
     Workload as WorkloadSchema,
     WorkloadUpdate,
     WorkloadWithCreator,
+    WorkloadSummary,
+    WorkloadJobsPage,
 )
 from app.api.auth import get_current_user
 from app.services.validators import validate_workload
@@ -75,6 +82,54 @@ def get_workload(
     if workload.creator:
         workload_dict.creator_username = workload.creator.username
     return workload_dict
+
+
+@router.get("/{workload_id}/summary", response_model=WorkloadSummary)
+def get_workload_summary(
+    workload_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Aggregate stats of a workload — avoids shipping the full jobs JSON to UI."""
+    workload = db.query(Workload).filter(Workload.id == workload_id).first()
+    if workload is None:
+        raise HTTPException(status_code=404, detail="Workload not found")
+
+    jobs, profiles = parse_workload_payload(workload.jobs, workload.profiles)
+    stats = compute_summary(jobs, profiles)
+    return WorkloadSummary(
+        workload_id=workload.id,
+        name=workload.name,
+        nb_res=workload.nb_res,
+        **stats,
+    )
+
+
+@router.get("/{workload_id}/jobs", response_model=WorkloadJobsPage)
+def get_workload_jobs(
+    workload_id: int,
+    response: Response,
+    offset: int = 0,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Cursor pagination over a workload's jobs list. Returns slice for virtualized preview."""
+    workload = db.query(Workload).filter(Workload.id == workload_id).first()
+    if workload is None:
+        raise HTTPException(status_code=404, detail="Workload not found")
+
+    jobs, _ = parse_workload_payload(workload.jobs, None)
+    total = len(jobs)
+    page = slice_jobs(jobs, offset, limit)
+    set_total_count(response, total)
+    return WorkloadJobsPage(
+        workload_id=workload.id,
+        offset=offset,
+        limit=limit,
+        total=total,
+        jobs=page,
+    )
 
 
 @router.post("/", response_model=WorkloadSchema)
