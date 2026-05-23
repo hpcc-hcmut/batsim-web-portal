@@ -10,6 +10,7 @@ import shutil
 
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.list_helpers import apply_sort, set_total_count
 from app.models.user import User
 from app.models.experiment import Experiment, ExperimentStatus
 from app.models.scenario import Scenario
@@ -36,6 +37,8 @@ from app.services.orchestrator.orchestrator_service import (
 
 router = APIRouter()
 
+EXPERIMENT_SORT_FIELDS = {"id", "name", "created_at", "updated_at", "total_jobs", "status"}
+
 
 def _enrich_experiment(exp: Experiment) -> ExperimentWithDetails:
     """Add related names to experiment response."""
@@ -51,12 +54,18 @@ def _enrich_experiment(exp: Experiment) -> ExperimentWithDetails:
 
 @router.get("/", response_model=List[ExperimentWithDetails])
 def get_experiments(
+    response: Response,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
+    sort_by: str = "created_at",
+    order: str = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    experiments = db.query(Experiment).offset(skip).limit(limit).all()
+    base = db.query(Experiment)
+    set_total_count(response, base.count())
+    sorted_q = apply_sort(base, Experiment, sort_by, order, EXPERIMENT_SORT_FIELDS)
+    experiments = sorted_q.offset(skip).limit(limit).all()
     return [_enrich_experiment(exp) for exp in experiments]
 
 

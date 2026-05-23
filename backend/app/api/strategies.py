@@ -1,11 +1,12 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import os
 import shutil
 import json
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.list_helpers import apply_sort, set_total_count
 from app.models.user import User
 from app.models.strategy import Strategy
 from app.schemas.strategy import (
@@ -20,6 +21,8 @@ from app.services.file_utils import sanitize_filename, safe_file_path
 router = APIRouter()
 
 STORAGE_DIR = os.path.join(settings.STORAGE_PATH, "strategies")
+
+STRATEGY_SORT_FIELDS = {"id", "name", "created_at", "updated_at", "file_size"}
 
 
 def ensure_storage_directory():
@@ -50,12 +53,18 @@ def _detect_main_entry(filename: str, metadata: dict) -> str | None:
 
 @router.get("/", response_model=List[StrategyWithCreator])
 def get_strategies(
+    response: Response,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
+    sort_by: str = "created_at",
+    order: str = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    strategies = db.query(Strategy).offset(skip).limit(limit).all()
+    base = db.query(Strategy)
+    set_total_count(response, base.count())
+    sorted_q = apply_sort(base, Strategy, sort_by, order, STRATEGY_SORT_FIELDS)
+    strategies = sorted_q.offset(skip).limit(limit).all()
     result = []
     for strategy in strategies:
         strategy_dict = StrategyWithCreator.from_orm(strategy)

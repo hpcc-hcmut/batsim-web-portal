@@ -25,6 +25,10 @@ import {
 import { ExperimentCreateDialog } from "../components/experiments/experiment-create-dialog";
 import { ExperimentDetailDialog } from "../components/experiments/experiment-detail-dialog";
 import { formatRelativeTime } from "../utils/format-relative-time";
+import { SortMenu } from "../components/common/sort-menu";
+import { PaginationFooter } from "../components/common/pagination-footer";
+import { useListQueryParams } from "../utils/use-list-query-params";
+import { EXPERIMENT_SORTS } from "../config/sort-options";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -42,6 +46,8 @@ function getStatusColor(status: string) {
 const AUTO_REFRESH_INTERVAL = 5000;
 
 const ExperimentsPage: React.FC = () => {
+  const { sort, order, page, size, skip, update } = useListQueryParams();
+  const [total, setTotal] = useState(0);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
@@ -58,9 +64,10 @@ const ExperimentsPage: React.FC = () => {
 
   const fetchExperiments = useCallback(async () => {
     try {
-      const res = await experimentsAPI.getAll();
+      const res = await experimentsAPI.getAll({ sort_by: sort, order, skip, limit: size });
       const data = Array.isArray(res.data) ? res.data : (res.data as any).items || [];
       setExperiments(data);
+      setTotal(Number(res.headers["x-total-count"] ?? data.length));
       // Update selected experiment if detail dialog is open
       if (selectedExperiment) {
         const updated = data.find((e: Experiment) => e.id === selectedExperiment.id);
@@ -69,14 +76,14 @@ const ExperimentsPage: React.FC = () => {
     } catch {
       setError("Failed to load experiments.");
     }
-  }, [selectedExperiment]);
+  }, [selectedExperiment, sort, order, skip, size]);
 
-  // Initial load
+  // Initial load + on sort/page change
   useEffect(() => {
     setLoading(true);
     setError(null);
     fetchExperiments().finally(() => setLoading(false));
-  }, []);
+  }, [sort, order, skip, size]);
 
   // Auto-refresh when any experiment is running/queued
   useEffect(() => {
@@ -90,9 +97,10 @@ const ExperimentsPage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        // Dialog dropdowns need all entities — bypass default 20-item pagination
         const [scenariosRes, strategiesRes] = await Promise.all([
-          scenariosAPI.getAll(),
-          strategiesAPI.getAll(),
+          scenariosAPI.getAll({ limit: 1000 }),
+          strategiesAPI.getAll({ limit: 1000 }),
         ]);
         setScenarios(scenariosRes.data);
         setStrategies(strategiesRes.data);
@@ -157,9 +165,16 @@ const ExperimentsPage: React.FC = () => {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Typography variant="h4" fontWeight={900}>Experiments</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setCreateDialogOpen(true)}>
-          New Experiment
-        </Button>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <SortMenu
+            options={EXPERIMENT_SORTS}
+            value={`${sort}:${order}`}
+            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+          />
+          <Button variant="contained" startIcon={<Add />} onClick={() => setCreateDialogOpen(true)}>
+            New Experiment
+          </Button>
+        </Stack>
       </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -226,6 +241,15 @@ const ExperimentsPage: React.FC = () => {
             </Grid>
           ))}
         </Grid>
+      )}
+      {!loading && !error && (
+        <PaginationFooter
+          page={page}
+          size={size}
+          total={total}
+          onPageChange={(p) => update({ page: p })}
+          onSizeChange={(s) => update({ size: s, page: 1 })}
+        />
       )}
 
       <ExperimentCreateDialog

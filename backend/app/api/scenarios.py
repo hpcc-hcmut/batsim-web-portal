@@ -1,7 +1,8 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.list_helpers import apply_sort, set_total_count
 from app.models.user import User
 from app.models.scenario import Scenario
 from app.models.workload import Workload
@@ -16,15 +17,23 @@ from app.api.auth import get_current_user
 
 router = APIRouter()
 
+SCENARIO_SORT_FIELDS = {"id", "name", "created_at", "updated_at"}
+
 
 @router.get("/", response_model=List[ScenarioWithDetails])
 def get_scenarios(
+    response: Response,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
+    sort_by: str = "created_at",
+    order: str = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    scenarios = db.query(Scenario).offset(skip).limit(limit).all()
+    base = db.query(Scenario)
+    set_total_count(response, base.count())
+    sorted_q = apply_sort(base, Scenario, sort_by, order, SCENARIO_SORT_FIELDS)
+    scenarios = sorted_q.offset(skip).limit(limit).all()
     return [_enrich_scenario(s) for s in scenarios]
 
 

@@ -85,15 +85,19 @@ const DashboardPage: React.FC = () => {
           experimentsRes,
           resultsRes,
         ] = await Promise.all([
-          workloadsAPI.getAll(),
-          platformsAPI.getAll(),
-          scenariosAPI.getAll(),
-          strategiesAPI.getAll(),
-          experimentsAPI.getAll(),
-          resultsAPI.getAll(),
+          workloadsAPI.getAll({ limit: 1 }),
+          platformsAPI.getAll({ limit: 1 }),
+          scenariosAPI.getAll({ limit: 1 }),
+          strategiesAPI.getAll({ limit: 1 }),
+          experimentsAPI.getAll({ limit: 500 }),
+          resultsAPI.getAll({ limit: 1 }),
         ]);
 
-        // Robustly get experiments array
+        // Counts come from the X-Total-Count header now that lists are paginated;
+        // experiments fetches more rows so we can still count by status client-side.
+        const totalOf = (res: any): number =>
+          Number(res.headers?.["x-total-count"] ?? (Array.isArray(res.data) ? res.data.length : 0));
+
         const experimentsArr = Array.isArray(experimentsRes.data)
           ? experimentsRes.data
           : experimentsRes.data.items || [];
@@ -105,12 +109,12 @@ const DashboardPage: React.FC = () => {
         ).length;
 
         setStats({
-          workloads: workloadsRes.data.length,
-          platforms: platformsRes.data.length,
-          scenarios: scenariosRes.data.length,
-          strategies: strategiesRes.data.length,
-          experiments: experimentsArr.length,
-          results: resultsRes.data.length,
+          workloads: totalOf(workloadsRes),
+          platforms: totalOf(platformsRes),
+          scenarios: totalOf(scenariosRes),
+          strategies: totalOf(strategiesRes),
+          experiments: totalOf(experimentsRes),
+          results: totalOf(resultsRes),
           runningExperiments,
           completedExperiments,
         });

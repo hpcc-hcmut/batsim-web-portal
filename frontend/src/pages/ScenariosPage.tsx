@@ -31,8 +31,14 @@ import {
   Platform,
 } from "../services/api";
 import { formatRelativeTime } from "../utils/format-relative-time";
+import { SortMenu } from "../components/common/sort-menu";
+import { PaginationFooter } from "../components/common/pagination-footer";
+import { useListQueryParams } from "../utils/use-list-query-params";
+import { SCENARIO_SORTS } from "../config/sort-options";
 
 const ScenariosPage: React.FC = () => {
+  const { sort, order, page, size, skip, update } = useListQueryParams();
+  const [total, setTotal] = useState(0);
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [workloads, setWorkloads] = useState<Workload[]>([]);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
@@ -55,11 +61,12 @@ const ScenariosPage: React.FC = () => {
 
   const loadScenarios = async () => {
     try {
-      const res = await scenariosAPI.getAll();
+      const res = await scenariosAPI.getAll({ sort_by: sort, order, skip, limit: size });
       const data = Array.isArray(res.data)
         ? res.data
         : (res.data as any).items || [];
       setScenarios(data);
+      setTotal(Number(res.headers["x-total-count"] ?? data.length));
     } catch {
       setError("Failed to load scenarios.");
     }
@@ -67,9 +74,10 @@ const ScenariosPage: React.FC = () => {
 
   const loadOptions = async () => {
     try {
+      // Dropdowns need all entities, bypass the new default 20-item pagination
       const [wlRes, pfRes] = await Promise.all([
-        workloadsAPI.getAll(),
-        platformsAPI.getAll(),
+        workloadsAPI.getAll({ limit: 1000 }),
+        platformsAPI.getAll({ limit: 1000 }),
       ]);
       const wl = Array.isArray(wlRes.data)
         ? wlRes.data
@@ -91,7 +99,7 @@ const ScenariosPage: React.FC = () => {
       await Promise.all([loadScenarios(), loadOptions()]);
       setLoading(false);
     })();
-  }, []);
+  }, [sort, order, skip, size]);
 
   const handleOpenDialog = () => {
     setForm({ name: "", description: "", workload_id: "", platform_id: "" });
@@ -139,7 +147,7 @@ const ScenariosPage: React.FC = () => {
       <Typography variant="h4" fontWeight={900} gutterBottom>
         Scenarios
       </Typography>
-      <Box sx={{ mb: 3 }}>
+      <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={2} sx={{ mb: 3, width: "100%" }}>
         <Button
           variant="contained"
           color="primary"
@@ -148,7 +156,12 @@ const ScenariosPage: React.FC = () => {
         >
           Create Scenario
         </Button>
-      </Box>
+        <SortMenu
+          options={SCENARIO_SORTS}
+          value={`${sort}:${order}`}
+          onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+        />
+      </Stack>
       {loading ? (
         <Grid container spacing={3}>
           {Array.from({ length: 6 }).map((_, i) => (
@@ -220,6 +233,15 @@ const ScenariosPage: React.FC = () => {
             </Grid>
           ))}
         </Grid>
+      )}
+      {!loading && !error && (
+        <PaginationFooter
+          page={page}
+          size={size}
+          total={total}
+          onPageChange={(p) => update({ page: p })}
+          onSizeChange={(s) => update({ size: s, page: 1 })}
+        />
       )}
 
       <Dialog

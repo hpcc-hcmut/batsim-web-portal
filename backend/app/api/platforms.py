@@ -1,10 +1,11 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Form
 from sqlalchemy.orm import Session
 import os
 import shutil
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.list_helpers import apply_sort, set_total_count
 from app.models.user import User
 from app.models.platform import Platform
 from app.schemas.platform import (
@@ -20,6 +21,8 @@ router = APIRouter()
 
 STORAGE_DIR = os.path.join(settings.STORAGE_PATH, "platforms")
 
+PLATFORM_SORT_FIELDS = {"id", "name", "created_at", "updated_at", "file_size"}
+
 
 def ensure_storage_directory():
     os.makedirs(STORAGE_DIR, exist_ok=True)
@@ -34,12 +37,18 @@ def _parse_and_validate_platform(file_path: str):
 
 @router.get("/", response_model=List[PlatformWithCreator])
 def get_platforms(
+    response: Response,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
+    sort_by: str = "created_at",
+    order: str = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    platforms = db.query(Platform).offset(skip).limit(limit).all()
+    base = db.query(Platform)
+    set_total_count(response, base.count())
+    sorted_q = apply_sort(base, Platform, sort_by, order, PLATFORM_SORT_FIELDS)
+    platforms = sorted_q.offset(skip).limit(limit).all()
     result = []
     for platform in platforms:
         platform_dict = PlatformWithCreator.from_orm(platform)

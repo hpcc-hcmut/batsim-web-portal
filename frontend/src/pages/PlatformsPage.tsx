@@ -43,6 +43,10 @@ import {
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
 import FileDropzone from "../components/common/file-dropzone";
 import { formatRelativeTime } from "../utils/format-relative-time";
+import { SortMenu } from "../components/common/sort-menu";
+import { PaginationFooter } from "../components/common/pagination-footer";
+import { useListQueryParams } from "../utils/use-list-query-params";
+import { PLATFORM_SORTS } from "../config/sort-options";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -53,6 +57,8 @@ function getFileTypeIcon(fileType: string | undefined) {
 }
 
 const PlatformsPage: React.FC = () => {
+  const { sort, order, page, size, skip, update } = useListQueryParams();
+  const [total, setTotal] = useState(0);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,11 +89,12 @@ const PlatformsPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await platformsAPI.getAll();
+        const res = await platformsAPI.getAll({ sort_by: sort, order, skip, limit: size });
         const data = Array.isArray(res.data)
           ? res.data
           : (res.data as any).items || [];
         setPlatforms(data);
+        setTotal(Number(res.headers["x-total-count"] ?? data.length));
       } catch (err: any) {
         setError("Failed to load platforms.");
       } finally {
@@ -95,7 +102,7 @@ const PlatformsPage: React.FC = () => {
       }
     };
     fetchPlatforms();
-  }, []);
+  }, [sort, order, skip, size]);
 
   const openDrawer = (mode: PanelMode, platform?: Platform) => {
     setPanelMode(mode);
@@ -228,7 +235,7 @@ const PlatformsPage: React.FC = () => {
         <Typography variant="h4" fontWeight={900} gutterBottom>
           Platforms
         </Typography>
-        <Box sx={{ mb: 3 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={2} sx={{ mb: 3, width: "100%" }}>
           <Button
             variant="contained"
             color="primary"
@@ -237,7 +244,12 @@ const PlatformsPage: React.FC = () => {
           >
             Upload New Platform
           </Button>
-        </Box>
+          <SortMenu
+            options={PLATFORM_SORTS}
+            value={`${sort}:${order}`}
+            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+          />
+        </Stack>
         {loading ? (
           <Grid container spacing={3}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -321,6 +333,15 @@ const PlatformsPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
+        )}
+        {!loading && !error && (
+          <PaginationFooter
+            page={page}
+            size={size}
+            total={total}
+            onPageChange={(p) => update({ page: p })}
+            onSizeChange={(s) => update({ size: s, page: 1 })}
+          />
         )}
       </Box>
 

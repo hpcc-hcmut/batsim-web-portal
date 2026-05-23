@@ -109,7 +109,8 @@ const ComparePage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    experimentsAPI.getAll().then((res) => {
+    // Picker needs all completed experiments — bypass default 20-item pagination
+    experimentsAPI.getAll({ limit: 1000 }).then((res) => {
       // Only show completed experiments
       setExperiments(res.data.filter((e) => e.status === "completed"));
     });

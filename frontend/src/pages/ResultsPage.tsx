@@ -23,8 +23,14 @@ import ResultDetailDrawer, {
   getComputedMetrics,
 } from "../components/results/result-detail-drawer";
 import { formatRelativeTime } from "../utils/format-relative-time";
+import { SortMenu } from "../components/common/sort-menu";
+import { PaginationFooter } from "../components/common/pagination-footer";
+import { useListQueryParams } from "../utils/use-list-query-params";
+import { RESULT_SORTS } from "../config/sort-options";
 
 const ResultsPage: React.FC = () => {
+  const { sort, order, page, size, skip, update } = useListQueryParams();
+  const [total, setTotal] = useState(0);
   const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,11 +49,12 @@ const ResultsPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await resultsAPI.getAll();
+        const res = await resultsAPI.getAll({ sort_by: sort, order, skip, limit: size });
         const data = Array.isArray(res.data)
           ? res.data
           : (res.data as any).items || [];
         setResults(data);
+        setTotal(Number(res.headers["x-total-count"] ?? data.length));
       } catch {
         setError("Failed to load results.");
       } finally {
@@ -55,7 +62,7 @@ const ResultsPage: React.FC = () => {
       }
     };
     fetchResults();
-  }, []);
+  }, [sort, order, skip, size]);
 
   const openDrawer = (result: Result) => {
     setSelectedResult(result);
@@ -111,9 +118,16 @@ const ResultsPage: React.FC = () => {
   return (
     <Box sx={{ display: "flex", flexDirection: { xs: "column", md: "row" }, height: "100%" }}>
       <Box sx={{ flex: 1, p: 3 }}>
-        <Typography variant="h4" fontWeight={900} gutterBottom>
-          Results
-        </Typography>
+        <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={2} sx={{ mb: 2, width: "100%" }}>
+          <Typography variant="h4" fontWeight={900}>
+            Results
+          </Typography>
+          <SortMenu
+            options={RESULT_SORTS}
+            value={`${sort}:${order}`}
+            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+          />
+        </Stack>
         {loading ? (
           <Grid container spacing={3}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -190,6 +204,15 @@ const ResultsPage: React.FC = () => {
               );
             })}
           </Grid>
+        )}
+        {!loading && !error && (
+          <PaginationFooter
+            page={page}
+            size={size}
+            total={total}
+            onPageChange={(p) => update({ page: p })}
+            onSizeChange={(s) => update({ size: s, page: 1 })}
+          />
         )}
       </Box>
 

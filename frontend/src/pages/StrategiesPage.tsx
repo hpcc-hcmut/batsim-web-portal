@@ -43,6 +43,10 @@ import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import python from "react-syntax-highlighter/dist/esm/languages/prism/python";
 import oneDark from "react-syntax-highlighter/dist/esm/styles/prism/one-dark";
 import { formatRelativeTime } from "../utils/format-relative-time";
+import { SortMenu } from "../components/common/sort-menu";
+import { PaginationFooter } from "../components/common/pagination-footer";
+import { useListQueryParams } from "../utils/use-list-query-params";
+import { STRATEGY_SORTS } from "../config/sort-options";
 
 SyntaxHighlighter.registerLanguage("python", python);
 
@@ -56,6 +60,8 @@ function getFileTypeIcon(fileType: string | undefined) {
 }
 
 const StrategiesPage: React.FC = () => {
+  const { sort, order, page, size, skip, update } = useListQueryParams();
+  const [total, setTotal] = useState(0);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,11 +99,12 @@ const StrategiesPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await strategiesAPI.getAll();
+        const res = await strategiesAPI.getAll({ sort_by: sort, order, skip, limit: size });
         const data = Array.isArray(res.data)
           ? res.data
           : (res.data as any).items || [];
         setStrategies(data);
+        setTotal(Number(res.headers["x-total-count"] ?? data.length));
       } catch (err: any) {
         setError("Failed to load strategies.");
       } finally {
@@ -105,7 +112,7 @@ const StrategiesPage: React.FC = () => {
       }
     };
     fetchStrategies();
-  }, []);
+  }, [sort, order, skip, size]);
 
   const openDrawer = (mode: PanelMode, strategy?: Strategy) => {
     setPanelMode(mode);
@@ -273,7 +280,7 @@ const StrategiesPage: React.FC = () => {
         <Typography variant="h4" fontWeight={900} gutterBottom>
           Strategies
         </Typography>
-        <Box sx={{ mb: 3 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={2} sx={{ mb: 3, width: "100%" }}>
           <Button
             variant="contained"
             color="primary"
@@ -282,7 +289,12 @@ const StrategiesPage: React.FC = () => {
           >
             Upload New Strategy
           </Button>
-        </Box>
+          <SortMenu
+            options={STRATEGY_SORTS}
+            value={`${sort}:${order}`}
+            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+          />
+        </Stack>
         {loading ? (
           <Grid container spacing={3}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -385,6 +397,15 @@ const StrategiesPage: React.FC = () => {
                 </Grid>
             ))}
           </Grid>
+        )}
+        {!loading && !error && (
+          <PaginationFooter
+            page={page}
+            size={size}
+            total={total}
+            onPageChange={(p) => update({ page: p })}
+            onSizeChange={(s) => update({ size: s, page: 1 })}
+          />
         )}
       </Box>
 

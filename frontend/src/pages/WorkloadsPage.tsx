@@ -45,6 +45,10 @@ import {
 import ValidationErrorPanel from "../components/ValidationErrorPanel";
 import FileDropzone from "../components/common/file-dropzone";
 import { formatRelativeTime } from "../utils/format-relative-time";
+import { SortMenu } from "../components/common/sort-menu";
+import { PaginationFooter } from "../components/common/pagination-footer";
+import { useListQueryParams } from "../utils/use-list-query-params";
+import { WORKLOAD_SORTS } from "../config/sort-options";
 
 type PanelMode = "view" | "edit" | "add";
 
@@ -56,7 +60,9 @@ function getFileTypeIcon(fileType: string | undefined) {
 }
 
 const WorkloadsPage: React.FC = () => {
+  const { sort, order, page, size, skip, update } = useListQueryParams();
   const [workloads, setWorkloads] = useState<Workload[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -87,8 +93,9 @@ const WorkloadsPage: React.FC = () => {
       setLoading(true);
       setError(null);
       try {
-        const res = await workloadsAPI.getAll();
+        const res = await workloadsAPI.getAll({ sort_by: sort, order, skip, limit: size });
         setWorkloads(res.data);
+        setTotal(Number(res.headers["x-total-count"] ?? res.data.length));
       } catch (err: any) {
         setError("Failed to load workloads.");
       } finally {
@@ -96,7 +103,7 @@ const WorkloadsPage: React.FC = () => {
       }
     };
     fetchWorkloads();
-  }, []);
+  }, [sort, order, skip, size]);
 
   const openDrawer = (mode: PanelMode, workload?: Workload) => {
     setPanelMode(mode);
@@ -220,7 +227,7 @@ const WorkloadsPage: React.FC = () => {
         <Typography variant="h4" fontWeight={900} gutterBottom>
           Workloads
         </Typography>
-        <Box sx={{ mb: 3 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={2} sx={{ mb: 3, width: "100%" }}>
           <Button
             variant="contained"
             color="primary"
@@ -230,7 +237,12 @@ const WorkloadsPage: React.FC = () => {
           >
             Upload New Workload
           </Button>
-        </Box>
+          <SortMenu
+            options={WORKLOAD_SORTS}
+            value={`${sort}:${order}`}
+            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+          />
+        </Stack>
         {loading ? (
           <Grid container spacing={3}>
             {Array.from({ length: 6 }).map((_, i) => (
@@ -318,6 +330,15 @@ const WorkloadsPage: React.FC = () => {
               </Grid>
             ))}
           </Grid>
+        )}
+        {!loading && !error && (
+          <PaginationFooter
+            page={page}
+            size={size}
+            total={total}
+            onPageChange={(p) => update({ page: p })}
+            onSizeChange={(s) => update({ size: s, page: 1 })}
+          />
         )}
       </Box>
       {/* Drawer for Detail/Edit/Add */}

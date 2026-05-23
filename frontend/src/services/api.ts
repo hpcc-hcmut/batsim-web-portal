@@ -2,6 +2,15 @@ import axios, { AxiosResponse } from "axios";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
+// Common list params (sort + pagination) — shared across all entity list endpoints.
+// Backend reads X-Total-Count header for pagination; whitelist enforced server-side.
+export interface ListParams {
+  skip?: number;
+  limit?: number;
+  sort_by?: string;
+  order?: "asc" | "desc";
+}
+
 // Types
 export interface User {
   id: number;
@@ -266,10 +275,7 @@ export const authAPI = {
 
 // Workloads API
 export const workloadsAPI = {
-  getAll: (params?: {
-    skip?: number;
-    limit?: number;
-  }): Promise<AxiosResponse<Workload[]>> => api.get("/workloads/", { params }),
+  getAll: (params?: ListParams): Promise<AxiosResponse<Workload[]>> => api.get("/workloads/", { params }),
   getById: (id: number): Promise<AxiosResponse<Workload>> =>
     api.get(`/workloads/${id}`),
   create: (formData: FormData): Promise<AxiosResponse<Workload>> =>
@@ -290,10 +296,7 @@ export const workloadsAPI = {
 
 // Platforms API
 export const platformsAPI = {
-  getAll: (params?: {
-    skip?: number;
-    limit?: number;
-  }): Promise<AxiosResponse<Platform[]>> => api.get("/platforms/", { params }),
+  getAll: (params?: ListParams): Promise<AxiosResponse<Platform[]>> => api.get("/platforms/", { params }),
   getById: (id: number): Promise<AxiosResponse<Platform>> =>
     api.get(`/platforms/${id}`),
   create: (formData: FormData): Promise<AxiosResponse<Platform>> =>
@@ -321,10 +324,7 @@ export const platformsAPI = {
 
 // Scenarios API
 export const scenariosAPI = {
-  getAll: (params?: {
-    skip?: number;
-    limit?: number;
-  }): Promise<AxiosResponse<Scenario[]>> => api.get("/scenarios/", { params }),
+  getAll: (params?: ListParams): Promise<AxiosResponse<Scenario[]>> => api.get("/scenarios/", { params }),
   getById: (id: number): Promise<AxiosResponse<Scenario>> =>
     api.get(`/scenarios/${id}`),
   create: (
@@ -340,10 +340,7 @@ export const scenariosAPI = {
 
 // Strategies API
 export const strategiesAPI = {
-  getAll: (params?: {
-    skip?: number;
-    limit?: number;
-  }): Promise<AxiosResponse<Strategy[]>> => api.get("/strategies/", { params }),
+  getAll: (params?: ListParams): Promise<AxiosResponse<Strategy[]>> => api.get("/strategies/", { params }),
   getById: (id: number): Promise<AxiosResponse<Strategy>> =>
     api.get(`/strategies/${id}`),
   create: (formData: FormData): Promise<AxiosResponse<Strategy>> =>
@@ -382,10 +379,7 @@ export const strategiesAPI = {
 
 // Experiments API
 export const experimentsAPI = {
-  getAll: (params?: {
-    skip?: number;
-    limit?: number;
-  }): Promise<AxiosResponse<Experiment[]>> =>
+  getAll: (params?: ListParams): Promise<AxiosResponse<Experiment[]>> =>
     api.get("/experiments/", { params }),
   getById: (id: number): Promise<AxiosResponse<Experiment>> =>
     api.get(`/experiments/${id}`),
@@ -469,10 +463,7 @@ export const experimentsAPI = {
 
 // Results API
 export const resultsAPI = {
-  getAll: (params?: {
-    skip?: number;
-    limit?: number;
-  }): Promise<AxiosResponse<Result[]>> => api.get("/results/", { params }),
+  getAll: (params?: ListParams): Promise<AxiosResponse<Result[]>> => api.get("/results/", { params }),
   getById: (id: number): Promise<AxiosResponse<Result>> =>
     api.get(`/results/${id}`),
   getByExperiment: (experimentId: number): Promise<AxiosResponse<Result[]>> =>

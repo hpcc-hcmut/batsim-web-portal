@@ -10,6 +10,7 @@ import io
 import os
 import logging
 from app.core.database import get_db
+from app.core.list_helpers import apply_sort, set_total_count
 from app.models.user import User
 from app.models.result import Result
 from app.models.experiment import Experiment
@@ -25,15 +26,23 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+RESULT_SORT_FIELDS = {"id", "created_at", "makespan", "mean_slowdown", "resource_utilization"}
+
 
 @router.get("/", response_model=List[ResultWithExperiment])
 def get_results(
+    response: Response,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = 20,
+    sort_by: str = "created_at",
+    order: str = "desc",
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    results = db.query(Result).offset(skip).limit(limit).all()
+    base = db.query(Result)
+    set_total_count(response, base.count())
+    sorted_q = apply_sort(base, Result, sort_by, order, RESULT_SORT_FIELDS)
+    results = sorted_q.offset(skip).limit(limit).all()
     result_list = []
     for res in results:
         res_dict = ResultWithExperiment.from_orm(res)
