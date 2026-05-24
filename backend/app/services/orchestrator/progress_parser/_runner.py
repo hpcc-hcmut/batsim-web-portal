@@ -161,7 +161,10 @@ def _run(experiment_id: int, batsim_container, stop_event: threading.Event, stat
     db = SessionLocal()
     last_flush = time.monotonic()
     try:
-        for chunk in batsim_container.logs(stream=True, follow=True, stdout=True, stderr=False):
+        # BatSim writes [server/INFO] progress lines to STDERR (via SimGrid's logging
+        # which defaults to stderr). Requesting only stderr also avoids Docker's
+        # multiplexed stream headers that corrupt the regex-matched line content.
+        for chunk in batsim_container.logs(stream=True, follow=True, stdout=False, stderr=True):
             if stop_event.is_set():
                 break
             if not chunk:

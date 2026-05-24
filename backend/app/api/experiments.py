@@ -395,9 +395,12 @@ def get_experiment_progress(
 # Task 7.6 — 4-stream log endpoints
 # ---------------------------------------------------------------------------
 
-# Per-stream hard cap served to clients (5 MB).
-# Prevents sending huge payloads; truncated flag signals the client.
-_STREAM_CAP_BYTES = 5 * 1024 * 1024
+# Per-stream hard cap served to clients (200 KB).
+# BatSim stderr can exceed 40 MB for 50k-job workloads; shipping that to the
+# browser locks up the React log renderer. 200 KB ≈ 3000–4000 lines which is
+# plenty for live tail viewing. Full download is available via the dedicated
+# download endpoint.
+_STREAM_CAP_BYTES = 200 * 1024
 
 # Valid stream names for download endpoint
 _VALID_STREAM_NAMES = frozenset(
