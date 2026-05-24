@@ -1,5 +1,9 @@
 global:
-  scrape_interval: 5s
+  # 2s matches the progress parser's DB flush cadence (_DB_FLUSH_INTERVAL_S = 2.0)
+  # so Prometheus sees each update. A 5k-job simulation (~28s wall-clock) yields
+  # ~14 data points — enough for Grafana to render a smooth ramp instead of a cliff.
+  # Storage cost: ~125 MB worst-case at 15d retention (trivial for lab use).
+  scrape_interval: 2s
   evaluation_interval: 15s
 
 scrape_configs:
