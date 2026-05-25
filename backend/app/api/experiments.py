@@ -339,11 +339,21 @@ def get_experiment_progress(
     if exp.created_by != current_user.id and current_user.role.value != "admin":
         raise HTTPException(status_code=403, detail="Not enough permissions")
 
-    # Compute wall_seconds (handles naive datetimes stored by SQLite)
+    # Compute wall_seconds (handles naive datetimes stored by SQLite).
+    # For completed/failed/cancelled experiments, freeze at end - start so the
+    # counter doesn't keep growing every time the dialog is opened.
     started = exp.start_time
+    ended = exp.end_time
     if started and started.tzinfo is None:
         started = started.replace(tzinfo=timezone.utc)
-    wall = (datetime.now(timezone.utc) - started).total_seconds() if started else 0.0
+    if ended and ended.tzinfo is None:
+        ended = ended.replace(tzinfo=timezone.utc)
+    if started and ended:
+        wall = (ended - started).total_seconds()
+    elif started:
+        wall = (datetime.now(timezone.utc) - started).total_seconds()
+    else:
+        wall = 0.0
 
     # For RUNNING experiments, prefer in-memory state (more up-to-date than DB)
     live_state = None

@@ -4,7 +4,11 @@ const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
 
 export function formatRelativeTime(iso?: string | null): string {
   if (!iso) return "-";
-  const date = new Date(iso);
+  // Backend (SQLite func.now()) stores UTC but omits the Z suffix in JSON.
+  // Without Z, JS new Date() treats the string as LOCAL time, causing a
+  // GMT+N offset (e.g. "7 hours ago" for a just-completed experiment in GMT+7).
+  const normalized = /[Z+]/.test(iso) || /[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + "Z";
+  const date = new Date(normalized);
   if (isNaN(date.getTime())) return "-";
   const deltaSec = Math.round((date.getTime() - Date.now()) / 1000);
   const absSec = Math.abs(deltaSec);
