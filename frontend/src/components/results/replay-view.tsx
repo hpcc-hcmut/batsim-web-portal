@@ -39,6 +39,7 @@ export function ReplayView({ resultId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<[number, number] | null>(null);
+  const [hostRange, setHostRange] = useState<[number, number] | null>(null);
   const [densityOverride, setDensityOverride] = useState<"auto" | "on" | "off">("auto");
 
   useEffect(() => {
@@ -53,6 +54,8 @@ export function ReplayView({ resultId }: Props) {
         if (cancelled) return;
         setData(res.data);
         setRange([0, res.data.makespan || 0]);
+        // Default host range: first 64 hosts (readable at ~7px/row). Show all if fewer.
+        setHostRange([0, Math.min(64, res.data.n_hosts)]);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -113,7 +116,7 @@ export function ReplayView({ resultId }: Props) {
     return <Alert severity="error">{error}</Alert>;
   }
 
-  if (!data || !visible || !range) {
+  if (!data || !visible || !range || !hostRange) {
     return <Alert severity="warning">Không có dữ liệu timeline cho result này.</Alert>;
   }
 
@@ -147,6 +150,43 @@ export function ReplayView({ resultId }: Props) {
           />
         </Stack>
 
+        {/* Controls panel — sliders ABOVE Gantt for discoverability (P3) */}
+        <Box sx={{ px: 1, display: "flex", gap: 3, flexWrap: "wrap", alignItems: "center" }}>
+          <Box sx={{ flex: "1 1 300px", minWidth: 200 }}>
+            <Typography variant="caption" color="text.secondary">
+              Time: {range[0].toFixed(0)}s – {range[1].toFixed(0)}s
+            </Typography>
+            <Slider
+              value={range}
+              min={0}
+              max={data.makespan || 1}
+              step={Math.max(0.1, (data.makespan || 1) / 1000)}
+              onChange={(_, v) => setRange(v as [number, number])}
+              valueLabelDisplay="auto"
+              disableSwap
+              size="small"
+            />
+          </Box>
+          {data.n_hosts > 1 && (
+            <Box sx={{ flex: "1 1 200px", minWidth: 150 }}>
+              <Typography variant="caption" color="text.secondary">
+                Hosts: {hostRange[0]} – {hostRange[1] - 1} of {data.n_hosts}
+              </Typography>
+              <Slider
+                value={hostRange}
+                min={0}
+                max={data.n_hosts}
+                step={1}
+                onChange={(_, v) => setHostRange(v as [number, number])}
+                valueLabelDisplay="auto"
+                disableSwap
+                size="small"
+                color="secondary"
+              />
+            </Box>
+          )}
+        </Box>
+
         {/* Gantt — main panel */}
         <ScheduleGantt
           jobs={visible.jobsInWindow}
@@ -154,8 +194,10 @@ export function ReplayView({ resultId }: Props) {
           makespan={data.makespan}
           tStart={range[0]}
           tEnd={range[1]}
+          hostStart={hostRange[0]}
+          hostEnd={hostRange[1]}
           density={useDensity}
-          height={Math.min(520, Math.max(180, 24 + data.n_hosts * 8))}
+          height={Math.min(520, Math.max(180, 24 + (hostRange[1] - hostRange[0]) * 8))}
         />
 
         {/* Utilization over time — shares x-axis + cursor with Gantt */}
@@ -179,23 +221,6 @@ export function ReplayView({ resultId }: Props) {
           tMax={range[1]}
           color="#ef6c00"
         />
-
-        {/* Time-range slider — zooms Gantt + utilization + queue together */}
-        <Box sx={{ px: 2, pt: 0.5 }}>
-          <Typography variant="caption" color="text.secondary">
-            Time window: {range[0].toFixed(1)}s – {range[1].toFixed(1)}s
-          </Typography>
-          <Slider
-            value={range}
-            min={0}
-            max={data.makespan || 1}
-            step={Math.max(0.1, (data.makespan || 1) / 1000)}
-            onChange={(_, v) => setRange(v as [number, number])}
-            valueLabelDisplay="auto"
-            disableSwap
-            size="small"
-          />
-        </Box>
 
         {/* Waiting CDF — axis is waiting time (not simulation time), so independent */}
         <WaitingCdfChart series={data.waiting_cdf} />

@@ -1,8 +1,8 @@
-import { useMemo, useRef, useEffect, useState } from "react";
+import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import { Stage, Layer, Rect, Line, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Paper, Stack, Typography } from "@mui/material";
 import { TimelineJob } from "../../services/api";
 import { useTimelineCursor } from "../../utils/timeline-cursor-context";
 
@@ -12,25 +12,28 @@ interface Props {
   makespan: number;
   width?: number;
   height?: number;
-  // Time-axis window — defaults to [0, makespan]. ReplayView's slider drives this.
   tStart?: number;
   tEnd?: number;
-  // Density mode: draw all bars via a single Layer.sceneFunc call instead of N React
-  // <Rect> components. Bypasses React-Konva reconciliation cost when bar count is
-  // large (>~2000) — at the price of losing per-bar event listeners.
+  // Host-axis window — defaults to [0, nHosts]. ReplayView's host slider drives this.
+  hostStart?: number;
+  hostEnd?: number;
   density?: boolean;
 }
 
-// Visual tuning knobs — kept inline (not config) since they only affect this component.
 const PADDING = { top: 8, right: 16, bottom: 28, left: 56 };
 const STATE_COLORS = {
-  success: "#2e7d32",
   failed: "#c62828",
   timeout: "#ef6c00",
   unknown: "#9e9e9e",
 };
+// Distinct palette for successful jobs — color by job_id so researcher can
+// visually track individual jobs across hosts.
+const JOB_PALETTE = [
+  "#4a9eff", "#51cf66", "#ffd43b", "#ff6b6b", "#cc5de8",
+  "#20c997", "#ff922b", "#845ef7", "#339af0", "#f06595",
+];
 const TIME_AXIS_TICKS = 6;
-const HOST_LABEL_EVERY = 8; // skip labels when n_hosts is large to avoid clutter
+const HOST_LABEL_EVERY = 8;
 
 interface Bar {
   key: string;
@@ -39,22 +42,31 @@ interface Bar {
   w: number;
   h: number;
   color: string;
+  // Metadata for tooltip (P4)
+  jobId: string;
+  host: number;
+  startTime: number;
+  finishTime: number;
+  waitingTime: number | null;
+  success: boolean;
 }
 
-/**
- * Gantt with two render paths:
- *
- *   1. Sparse path (default): each bar is a React `<Rect>` — clean event model, good
- *      for ≤ ~2000 bars where reconciliation is cheap.
- *   2. Density path (`density={true}` or auto when bar count blows past the cap):
- *      a single Layer with a custom sceneFunc that draws all rects in one
- *      `ctx.fillRect()` loop. No per-bar React nodes, no per-bar listeners — the
- *      Konva Stage still tracks mouse for cursor broadcast.
- *
- * Coordinate system (with active window [tStart, tEnd]):
- *   x = PADDING.left + (t - tStart) * xScale, where xScale = plotW / (tEnd - tStart)
- *   y = PADDING.top  + (hostIdx / nHosts) * plotH
- */
+interface TooltipData {
+  bar: Bar;
+  mouseX: number;
+  mouseY: number;
+}
+
+function jobColor(j: TimelineJob): string {
+  if (!j.success) {
+    return j.final_state?.includes("TIMEOUT") ? STATE_COLORS.timeout
+      : j.final_state ? STATE_COLORS.failed
+      : STATE_COLORS.unknown;
+  }
+  const idNum = parseInt(j.job_id.split("!")[1] || j.job_id, 10) || 0;
+  return JOB_PALETTE[Math.abs(idNum) % JOB_PALETTE.length];
+}
+
 export function ScheduleGantt({
   jobs,
   nHosts,
@@ -63,18 +75,20 @@ export function ScheduleGantt({
   height = 360,
   tStart,
   tEnd,
+  hostStart,
+  hostEnd,
   density = false,
 }: Props) {
   const cursor = useTimelineCursor();
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [measuredW, setMeasuredW] = useState(width);
+  const [tooltip, setTooltip] = useState<TooltipData | null>(null);
 
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
-      const w = Math.max(320, Math.floor(entry.contentRect.width));
-      setMeasuredW(w);
+      setMeasuredW(Math.max(320, Math.floor(entry.contentRect.width)));
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -85,48 +99,50 @@ export function ScheduleGantt({
   const plotW = Math.max(50, W - PADDING.left - PADDING.right);
   const plotH = Math.max(50, H - PADDING.top - PADDING.bottom);
 
-  // Effective time window — fall back to [0, makespan] when slider hasn't supplied bounds.
   const t0 = tStart ?? 0;
   const t1 = tEnd ?? makespan ?? 0;
   const tSpan = Math.max(1e-9, t1 - t0);
   const xScale = plotW / tSpan;
-  const yScale = nHosts > 0 ? plotH / nHosts : 0;
 
-  // Flatten jobs → bars (one per allocated host). Clipped to the visible window so the
-  // sceneFunc doesn't waste pixels drawing offscreen rects.
+  // Host-axis window (P1)
+  const h0 = hostStart ?? 0;
+  const h1 = hostEnd ?? nHosts;
+  const visibleHosts = Math.max(1, h1 - h0);
+  const yScale = plotH / visibleHosts;
+
   const bars = useMemo<Bar[]>(() => {
     const out: Bar[] = [];
     for (const j of jobs) {
       if (j.starting_time == null || j.finish_time == null) continue;
       const startT = Math.max(t0, j.starting_time);
       const endT = Math.min(t1, j.finish_time);
-      if (endT <= startT) continue; // outside window
+      if (endT <= startT) continue;
       const x = PADDING.left + (startT - t0) * xScale;
       const w = Math.max(1, (endT - startT) * xScale);
-      const color = j.success
-        ? STATE_COLORS.success
-        : j.final_state?.includes("TIMEOUT")
-          ? STATE_COLORS.timeout
-          : j.final_state
-            ? STATE_COLORS.failed
-            : STATE_COLORS.unknown;
+      const color = jobColor(j);
       const hosts = j.allocated_resources.length
         ? j.allocated_resources
         : Array.from({ length: j.requested_resources }, (_, i) => i);
       for (const h of hosts) {
-        if (h < 0 || h >= nHosts) continue;
+        if (h < h0 || h >= h1) continue;
         out.push({
           key: `${j.job_id}-${h}`,
           x,
-          y: PADDING.top + h * yScale,
+          y: PADDING.top + (h - h0) * yScale,
           w,
           h: Math.max(1, yScale - 1),
           color,
+          jobId: j.job_id,
+          host: h,
+          startTime: j.starting_time!,
+          finishTime: j.finish_time!,
+          waitingTime: j.waiting_time ?? null,
+          success: j.success,
         });
       }
     }
     return out;
-  }, [jobs, xScale, yScale, nHosts, t0, t1]);
+  }, [jobs, xScale, yScale, h0, h1, t0, t1]);
 
   const timeTicks = useMemo(() => {
     const ticks: Array<{ x: number; label: string }> = [];
@@ -142,16 +158,15 @@ export function ScheduleGantt({
 
   const hostTicks = useMemo(() => {
     const ticks: Array<{ y: number; label: string }> = [];
-    if (nHosts <= 0) return ticks;
-    const step = nHosts <= 32 ? 1 : Math.ceil(nHosts / HOST_LABEL_EVERY);
-    for (let i = 0; i < nHosts; i += step) {
-      ticks.push({ y: PADDING.top + i * yScale, label: String(i) });
+    if (visibleHosts <= 0) return ticks;
+    const step = visibleHosts <= 32 ? 1 : Math.ceil(visibleHosts / HOST_LABEL_EVERY);
+    for (let i = 0; i < visibleHosts; i += step) {
+      ticks.push({ y: PADDING.top + i * yScale, label: String(h0 + i) });
     }
     return ticks;
-  }, [nHosts, yScale]);
+  }, [visibleHosts, yScale, h0]);
 
-  // Broadcast hover time so the line charts can highlight the same instant.
-  const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+  const handleMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
     const pos = e.target.getStage()?.getPointerPosition();
     if (!pos) return;
     const x = pos.x - PADDING.left;
@@ -160,11 +175,16 @@ export function ScheduleGantt({
       return;
     }
     cursor.setT(t0 + x / xScale);
-  };
+  }, [cursor, plotW, xScale, t0]);
 
-  // Density-mode sceneFunc — draws ALL bars in one fillRect loop, grouped by color
-  // to minimise context-state churn. React renders ONE node (the Layer); the actual
-  // pixels come from this hand-rolled paint pass.
+  // Tooltip handlers (P4) — sparse mode only
+  const handleBarEnter = useCallback((bar: Bar, e: KonvaEventObject<MouseEvent>) => {
+    const pos = e.target.getStage()?.getPointerPosition();
+    if (pos) setTooltip({ bar, mouseX: pos.x, mouseY: pos.y });
+  }, []);
+
+  const handleBarLeave = useCallback(() => setTooltip(null), []);
+
   const drawBarsScene = useMemo(() => {
     return (ctx: Konva.Context) => {
       const byColor = new Map<string, Bar[]>();
@@ -186,11 +206,11 @@ export function ScheduleGantt({
   }, [bars]);
 
   return (
-    <Box ref={wrapRef} sx={{ width: "100%" }}>
+    <Box ref={wrapRef} sx={{ width: "100%", position: "relative" }}>
       <Stack direction="row" spacing={2} sx={{ mb: 0.5, alignItems: "baseline" }}>
         <Typography variant="caption" color="text.secondary">
-          {bars.length} bar-segments · {nHosts} hosts · window {t0.toFixed(1)}s –{" "}
-          {t1.toFixed(1)}s {density ? "(density)" : ""}
+          {bars.length} bars · hosts {h0}–{h1 - 1} of {nHosts} · window {t0.toFixed(1)}s–{t1.toFixed(1)}s
+          {density ? " (density)" : ""}
         </Typography>
         {cursor.t != null && <Typography variant="caption">t = {cursor.t.toFixed(2)}s</Typography>}
       </Stack>
@@ -198,84 +218,52 @@ export function ScheduleGantt({
         width={W}
         height={H}
         onMouseMove={handleMouseMove}
-        onMouseLeave={() => cursor.setT(null)}
+        onMouseLeave={() => { cursor.setT(null); setTooltip(null); }}
       >
         <Layer listening={false}>
-          {/* plot background */}
-          <Rect
-            x={PADDING.left}
-            y={PADDING.top}
-            width={plotW}
-            height={plotH}
-            fill="#fafafa"
-            stroke="#e0e0e0"
-          />
-          {/* host gridlines */}
+          <Rect x={PADDING.left} y={PADDING.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e0e0e0" />
           {hostTicks.map((t) => (
-            <Line
-              key={`hg-${t.label}`}
-              points={[PADDING.left, t.y, PADDING.left + plotW, t.y]}
-              stroke="#eeeeee"
-            />
+            <Line key={`hg-${t.label}`} points={[PADDING.left, t.y, PADDING.left + plotW, t.y]} stroke="#eeeeee" />
           ))}
           {hostTicks.map((t) => (
-            <Text
-              key={`hl-${t.label}`}
-              x={4}
-              y={t.y - 6}
-              text={`h${t.label}`}
-              fontSize={10}
-              fill="#666"
-            />
-          ))}
-          {/* time-axis ticks */}
-          {timeTicks.map((t, i) => (
-            <Line
-              key={`tg-${i}`}
-              points={[t.x, PADDING.top, t.x, PADDING.top + plotH]}
-              stroke="#eeeeee"
-            />
+            <Text key={`hl-${t.label}`} x={4} y={t.y - 6} text={`h${t.label}`} fontSize={10} fill="#666" />
           ))}
           {timeTicks.map((t, i) => (
-            <Text
-              key={`tl-${i}`}
-              x={t.x - 12}
-              y={PADDING.top + plotH + 4}
-              text={t.label}
-              fontSize={10}
-              fill="#666"
-            />
+            <Line key={`tg-${i}`} points={[t.x, PADDING.top, t.x, PADDING.top + plotH]} stroke="#eeeeee" />
+          ))}
+          {timeTicks.map((t, i) => (
+            <Text key={`tl-${i}`} x={t.x - 12} y={PADDING.top + plotH + 4} text={t.label} fontSize={10} fill="#666" />
           ))}
         </Layer>
 
-        {/* Bars — sparse path for low counts, sceneFunc density path otherwise */}
         {density ? (
           <Layer listening={false}>
-            <Rect
-              x={0}
-              y={0}
-              width={W}
-              height={H}
-              sceneFunc={(ctx) => drawBarsScene(ctx)}
-            />
+            <Rect x={0} y={0} width={W} height={H} sceneFunc={(ctx) => drawBarsScene(ctx)} />
           </Layer>
         ) : (
-          <Layer listening={false}>
+          <Layer>
             {bars.map((b) => (
-              <Rect key={b.key} x={b.x} y={b.y} width={b.w} height={b.h} fill={b.color} opacity={0.85} />
+              <Rect
+                key={b.key}
+                x={b.x}
+                y={b.y}
+                width={b.w}
+                height={b.h}
+                fill={b.color}
+                opacity={0.85}
+                onMouseEnter={(e) => handleBarEnter(b, e)}
+                onMouseLeave={handleBarLeave}
+              />
             ))}
           </Layer>
         )}
 
-        {/* cursor */}
         {cursor.t != null && cursor.t >= t0 && cursor.t <= t1 && (
           <Layer listening={false}>
             <Line
               points={[
-                PADDING.left + (cursor.t - t0) * xScale,
-                PADDING.top,
-                PADDING.left + (cursor.t - t0) * xScale,
-                PADDING.top + plotH,
+                PADDING.left + (cursor.t - t0) * xScale, PADDING.top,
+                PADDING.left + (cursor.t - t0) * xScale, PADDING.top + plotH,
               ]}
               stroke="#1976d2"
               strokeWidth={1}
@@ -284,6 +272,41 @@ export function ScheduleGantt({
           </Layer>
         )}
       </Stage>
+
+      {/* Tooltip overlay (P4) — positioned at mouse, shows job details */}
+      {tooltip && !density && (
+        <Paper
+          elevation={4}
+          sx={{
+            position: "absolute",
+            left: Math.min(tooltip.mouseX + 12, W - 260),
+            top: tooltip.mouseY - 10,
+            px: 1.5,
+            py: 1,
+            pointerEvents: "none",
+            zIndex: 10,
+            maxWidth: 280,
+            fontSize: 12,
+            lineHeight: 1.5,
+          }}
+        >
+          <Typography variant="caption" fontWeight={700} sx={{ display: "block" }}>
+            {tooltip.bar.jobId}
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+            Host {tooltip.bar.host} · {tooltip.bar.success ? "success" : "failed"}
+          </Typography>
+          <Typography variant="caption" sx={{ display: "block" }}>
+            {tooltip.bar.startTime.toFixed(1)}s → {tooltip.bar.finishTime.toFixed(1)}s
+            ({(tooltip.bar.finishTime - tooltip.bar.startTime).toFixed(1)}s)
+          </Typography>
+          {tooltip.bar.waitingTime != null && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+              waited {tooltip.bar.waitingTime.toFixed(1)}s
+            </Typography>
+          )}
+        </Paper>
+      )}
     </Box>
   );
 }
