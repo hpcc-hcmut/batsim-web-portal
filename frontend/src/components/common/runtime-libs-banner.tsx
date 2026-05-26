@@ -76,7 +76,7 @@ export function RuntimeLibsBanner() {
   if (error) {
     return (
       <Alert severity="warning" sx={{ mb: 2 }} variant="outlined" action={refreshBtn}>
-        <AlertTitle>PyBatSim runtime manifest không khả dụng</AlertTitle>
+        <AlertTitle>PyBatSim runtime manifest unavailable</AlertTitle>
         <Typography variant="body2">{error.message}</Typography>
         {error.hint && (
           <Typography variant="caption" color="text.secondary">
@@ -98,7 +98,7 @@ export function RuntimeLibsBanner() {
         <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
           {info.available_libs.length === 0 && (
             <Typography variant="caption" color="text.secondary">
-              Chỉ stdlib có sẵn — chưa cài lib bổ sung.
+              Only stdlib available — no extra libraries installed.
             </Typography>
           )}
           {info.available_libs.map((lib) => (

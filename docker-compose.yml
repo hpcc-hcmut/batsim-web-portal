@@ -12,6 +12,8 @@ services:
       - ./backend:/app
       - ./backend/storage:/app/storage
       - /var/run/docker.sock:/var/run/docker.sock
+      # Runtime manifest for /system/runtime endpoint — lives outside ./backend
+      - ./docker/pybatsim-extended/runtime-info.json:/app/docker/pybatsim-extended/runtime-info.json:ro
     env_file:
       - ./backend/.env
     environment:

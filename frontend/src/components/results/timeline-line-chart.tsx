@@ -161,7 +161,7 @@ export function TimelineLineChart({
       <Box sx={{ height }}>
         {series.length === 0 ? (
           <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>
-            {title}: chưa có dữ liệu trong khoảng đã chọn.
+            {title}: no data in selected range.
           </Typography>
         ) : (
           <Line

@@ -61,12 +61,12 @@ export class ErrorBoundary extends Component<Props, State> {
       <Box sx={{ p: 3 }}>
         <Alert severity="error" variant="outlined">
           <AlertTitle>
-            Đã xảy ra lỗi khi hiển thị {this.props.scope ?? "nội dung này"}
+            Error rendering {this.props.scope ?? "this content"}
           </AlertTitle>
           {err?.message ?? "Unknown error"}
           {exhausted && (
             <Box sx={{ mt: 1, fontSize: 12, color: "text.secondary" }}>
-              Đã thử lại {MAX_RESETS} lần không thành công — vui lòng tải lại trang.
+              Retried {MAX_RESETS} times without success — please reload the page.
             </Box>
           )}
           <Stack direction="row" spacing={1} sx={{ mt: 2 }}>
@@ -77,10 +77,10 @@ export class ErrorBoundary extends Component<Props, State> {
               onClick={this.reset}
               disabled={exhausted}
             >
-              Thử lại
+              Retry
             </Button>
             <Button size="small" variant="outlined" onClick={() => window.location.reload()}>
-              Tải lại trang
+              Reload page
             </Button>
           </Stack>
         </Alert>

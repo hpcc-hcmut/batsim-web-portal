@@ -96,7 +96,7 @@ export function VirtualJobList({
     return (
       <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 2 }}>
         <CircularProgress size={18} />
-        <Typography variant="body2">Đang nạp jobs…</Typography>
+        <Typography variant="body2">Loading jobs…</Typography>
       </Stack>
     );
   }
@@ -104,7 +104,7 @@ export function VirtualJobList({
   if (total === 0) {
     return (
       <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
-        Workload không có jobs.
+        Workload has no jobs.
       </Typography>
     );
   }

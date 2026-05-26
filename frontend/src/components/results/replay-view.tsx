@@ -107,7 +107,7 @@ export function ReplayView({ resultId }: Props) {
     return (
       <Stack direction="row" spacing={1} alignItems="center" sx={{ p: 4 }}>
         <CircularProgress size={20} />
-        <Typography variant="body2">Đang nạp timeline…</Typography>
+        <Typography variant="body2">Loading timeline…</Typography>
       </Stack>
     );
   }
@@ -117,7 +117,7 @@ export function ReplayView({ resultId }: Props) {
   }
 
   if (!data || !visible || !range || !hostRange) {
-    return <Alert severity="warning">Không có dữ liệu timeline cho result này.</Alert>;
+    return <Alert severity="warning">No timeline data available for this result.</Alert>;
   }
 
   return (

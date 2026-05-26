@@ -95,7 +95,7 @@ export function WaitingCdfChart({ series, height = 140 }: Props) {
       <Box sx={{ height }}>
         {series.length === 0 ? (
           <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>
-            Không có dữ liệu waiting time.
+            No waiting time data available.
           </Typography>
         ) : (
           <Line data={data} options={options} />
