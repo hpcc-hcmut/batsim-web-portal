@@ -67,6 +67,9 @@ const ResultsPage: React.FC = () => {
   const openDrawer = (result: Result) => {
     setSelectedResult(result);
     setDrawerOpen(true);
+    // List response uses load_only (no jobs_data/schedule_data blobs).
+    // Fetch full record so Summary tab's raw accordions have data.
+    resultsAPI.getById(result.id).then((res) => setSelectedResult(res.data)).catch(() => {});
   };
 
   const closeDrawer = () => {

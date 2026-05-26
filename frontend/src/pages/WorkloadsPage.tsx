@@ -96,6 +96,8 @@ const WorkloadsPage: React.FC = () => {
   // avoids parsing the (potentially huge) jobs JSON blob client-side.
   // Dep on selectedWorkload?.id (primitive) instead of the whole object so re-selecting
   // the same row doesn't re-fire the fetch when React creates a fresh reference.
+  // Fetch full record + summary when drawer opens — list response uses load_only
+  // (no jobs/profiles blobs) so we need the detail endpoint for the drawer.
   const selectedWorkloadId = selectedWorkload?.id;
   useEffect(() => {
     if (!drawerOpen || panelMode !== "view" || selectedWorkloadId == null) {
@@ -104,10 +106,14 @@ const WorkloadsPage: React.FC = () => {
     }
     let cancelled = false;
     setSummaryLoading(true);
-    workloadsAPI
-      .getSummary(selectedWorkloadId)
-      .then((res) => {
-        if (!cancelled) setSummary(res.data);
+    Promise.all([
+      workloadsAPI.getById(selectedWorkloadId),
+      workloadsAPI.getSummary(selectedWorkloadId),
+    ])
+      .then(([fullRes, summaryRes]) => {
+        if (cancelled) return;
+        setSelectedWorkload(fullRes.data);
+        setSummary(summaryRes.data);
       })
       .catch(() => {
         if (!cancelled) setSummary(null);
