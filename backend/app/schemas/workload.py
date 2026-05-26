@@ -42,6 +42,29 @@ class WorkloadWithCreator(Workload):
     creator_username: Optional[str] = None
 
 
+class WorkloadListItem(BaseModel):
+    """Lightweight list schema — excludes multi-MB jobs/profiles TEXT blobs.
+
+    Used by GET /workloads/ with load_only() so SQLite never reads blob pages from disk.
+    Revert: switch response_model back to List[WorkloadWithCreator] and remove load_only().
+    """
+    id: int
+    name: str
+    description: Optional[str] = None
+    file_path: str
+    file_size: Optional[int] = None
+    file_type: Optional[str] = None
+    created_by: Optional[int] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    nb_res: Optional[int] = None
+    version: int = 1
+    creator_username: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class WorkloadSummary(BaseModel):
     """Aggregate stats of a workload without dumping full jobs list."""
     workload_id: int

@@ -1,7 +1,7 @@
 from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, load_only
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 import csv
@@ -19,6 +19,7 @@ from app.schemas.result import (
     ResultCreate,
     ResultUpdate,
     ResultWithExperiment,
+    ResultListItem,
     TimelineResponse,
 )
 from app.api.auth import get_current_user
@@ -31,7 +32,7 @@ router = APIRouter()
 RESULT_SORT_FIELDS = {"id", "created_at", "makespan", "mean_slowdown", "resource_utilization"}
 
 
-@router.get("/", response_model=List[ResultWithExperiment])
+@router.get("/", response_model=List[ResultListItem])
 def get_results(
     response: Response,
     skip: int = 0,
@@ -41,20 +42,31 @@ def get_results(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    base = db.query(Result)
+    # load_only: SQL SELECT skips multi-MB CSV blobs (jobs_data, schedule_data, etc).
+    # Revert: remove .options(...), change response_model to List[ResultWithExperiment],
+    #         and use ResultWithExperiment.from_orm() below.
+    base = db.query(Result).options(
+        load_only(
+            Result.id, Result.experiment_id, Result.simulation_time,
+            Result.total_jobs, Result.completed_jobs, Result.failed_jobs,
+            Result.makespan, Result.average_waiting_time,
+            Result.average_turnaround_time, Result.resource_utilization,
+            Result.created_at,
+        )
+    )
     set_total_count(response, base.count())
     sorted_q = apply_sort(base, Result, sort_by, order, RESULT_SORT_FIELDS)
     results = sorted_q.offset(skip).limit(limit).all()
     result_list = []
     for res in results:
-        res_dict = ResultWithExperiment.from_orm(res)
+        item = ResultListItem.from_orm(res)
         if res.experiment:
-            res_dict.experiment_name = res.experiment.name
+            item.experiment_name = res.experiment.name
             if res.experiment.scenario:
-                res_dict.scenario_name = res.experiment.scenario.name
+                item.scenario_name = res.experiment.scenario.name
             if res.experiment.strategy:
-                res_dict.strategy_name = res.experiment.strategy.name
-        result_list.append(res_dict)
+                item.strategy_name = res.experiment.strategy.name
+        result_list.append(item)
     return result_list
 
 

@@ -57,6 +57,11 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# GZip — compresses 10MB+ list responses to ~500KB over Docker network.
+# Revert: remove these 2 lines if compression causes issues.
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,

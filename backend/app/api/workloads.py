@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 import os
 import shutil
 from app.core.database import get_db
@@ -18,6 +18,7 @@ from app.schemas.workload import (
     Workload as WorkloadSchema,
     WorkloadUpdate,
     WorkloadWithCreator,
+    WorkloadListItem,
     WorkloadSummary,
     WorkloadJobsPage,
 )
@@ -63,7 +64,7 @@ def _parse_and_validate_workload(file_path: str, filename: str):
     return result, data
 
 
-@router.get("/", response_model=List[WorkloadWithCreator])
+@router.get("/", response_model=List[WorkloadListItem])
 def get_workloads(
     response: Response,
     skip: int = 0,
@@ -73,16 +74,26 @@ def get_workloads(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    base = db.query(Workload)
+    # load_only: SQL SELECT skips multi-MB jobs/profiles TEXT columns entirely.
+    # Revert: remove .options(...), change response_model to List[WorkloadWithCreator],
+    #         and use WorkloadWithCreator.from_orm() below.
+    base = db.query(Workload).options(
+        load_only(
+            Workload.id, Workload.name, Workload.description,
+            Workload.file_path, Workload.file_size, Workload.file_type,
+            Workload.created_by, Workload.created_at, Workload.updated_at,
+            Workload.nb_res, Workload.version,
+        )
+    )
     set_total_count(response, base.count())
     sorted_q = apply_sort(base, Workload, sort_by, order, WORKLOAD_SORT_FIELDS)
     workloads = sorted_q.offset(skip).limit(limit).all()
     result = []
     for workload in workloads:
-        workload_dict = WorkloadWithCreator.from_orm(workload)
+        item = WorkloadListItem.from_orm(workload)
         if workload.creator:
-            workload_dict.creator_username = workload.creator.username
-        result.append(workload_dict)
+            item.creator_username = workload.creator.username
+        result.append(item)
     return result
 
 

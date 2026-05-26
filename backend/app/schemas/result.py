@@ -73,6 +73,31 @@ class ResultWithExperiment(Result):
     strategy_name: Optional[str] = None
 
 
+class ResultListItem(BaseModel):
+    """Lightweight list schema — excludes multi-MB CSV blobs.
+
+    Used by GET /results/ with load_only() so SQLite never reads blob pages.
+    Revert: switch response_model back to List[ResultWithExperiment] and remove load_only().
+    """
+    id: int
+    experiment_id: int
+    simulation_time: Optional[float] = None
+    total_jobs: Optional[int] = None
+    completed_jobs: Optional[int] = None
+    failed_jobs: int = 0
+    makespan: Optional[float] = None
+    average_waiting_time: Optional[float] = None
+    average_turnaround_time: Optional[float] = None
+    resource_utilization: Optional[float] = None
+    created_at: datetime
+    experiment_name: Optional[str] = None
+    scenario_name: Optional[str] = None
+    strategy_name: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class TimelineJob(BaseModel):
     """One job's timeline event for Gantt rendering."""
     job_id: str
