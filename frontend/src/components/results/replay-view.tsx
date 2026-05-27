@@ -4,7 +4,10 @@ import {
   Box,
   CircularProgress,
   Chip,
+  FormControl,
   FormControlLabel,
+  MenuItem,
+  Select,
   Slider,
   Stack,
   Switch,
@@ -20,10 +23,14 @@ interface Props {
   resultId: number;
 }
 
-// Truncation cap requested from backend — bounds the bar-count the Gantt has to draw
-// and switches to density mode automatically when exceeded.
-const DEFAULT_TIMELINE_LIMIT = 5000;
 const DENSITY_TRIGGER_BARS = 2000;
+const LIMIT_OPTIONS = [
+  { value: 1000, label: "1,000 jobs" },
+  { value: 2000, label: "2,000 jobs" },
+  { value: 5000, label: "5,000 jobs" },
+  { value: 10000, label: "10,000 jobs" },
+  { value: 0, label: "All (may be slow)" },
+];
 
 /**
  * Owner of the Replay tab. Fetches the timeline payload once, hosts the shared
@@ -41,6 +48,7 @@ export function ReplayView({ resultId }: Props) {
   const [range, setRange] = useState<[number, number] | null>(null);
   const [hostRange, setHostRange] = useState<[number, number] | null>(null);
   const [densityOverride, setDensityOverride] = useState<"auto" | "on" | "off">("auto");
+  const [jobLimit, setJobLimit] = useState(5000);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +57,7 @@ export function ReplayView({ resultId }: Props) {
     setData(null);
     setRange(null);
     resultsAPI
-      .getTimeline(resultId, DEFAULT_TIMELINE_LIMIT)
+      .getTimeline(resultId, jobLimit || undefined)
       .then((res) => {
         if (cancelled) return;
         setData(res.data);
@@ -68,7 +76,7 @@ export function ReplayView({ resultId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [resultId]);
+  }, [resultId, jobLimit]);
 
   // Filter jobs + time series to the visible window. Aggregates remain meaningful
   // because backend computes them over the full set before truncation.
@@ -136,6 +144,19 @@ export function ReplayView({ resultId }: Props) {
             />
           )}
           <Box sx={{ flex: 1 }} />
+          <FormControl size="small" sx={{ minWidth: 130 }}>
+            <Select
+              value={jobLimit}
+              onChange={(e) => setJobLimit(Number(e.target.value))}
+              sx={{ fontSize: 12, height: 28 }}
+            >
+              {LIMIT_OPTIONS.map((opt) => (
+                <MenuItem key={opt.value} value={opt.value} sx={{ fontSize: 12 }}>
+                  {opt.label}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControlLabel
             control={
               <Switch
