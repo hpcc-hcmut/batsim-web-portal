@@ -13,7 +13,7 @@ import {
   Snackbar,
   LinearProgress,
 } from "@mui/material";
-import { PlayArrow, Stop, Add } from "@mui/icons-material";
+import { PlayArrow, Stop, Add, Replay } from "@mui/icons-material";
 import {
   experimentsAPI,
   Experiment,
@@ -139,6 +139,25 @@ const ExperimentsPage: React.FC = () => {
     }
   };
 
+  // Rerun: backend clones the frozen inputs into a new experiment and starts it
+  const handleRerun = async (id: number) => {
+    try {
+      const res = await experimentsAPI.rerun(id);
+      setSnackbar({
+        open: true,
+        message: `Rerun started: ${res.data.name}`,
+        severity: "success",
+      });
+      fetchExperiments();
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.detail || "Failed to rerun experiment.",
+        severity: "error",
+      });
+    }
+  };
+
   const handleSnackbar = (message: string, severity: "success" | "error") => {
     setSnackbar({ open: true, message, severity });
   };
@@ -234,6 +253,13 @@ const ExperimentsPage: React.FC = () => {
                     <Button variant="contained" color="error" size="small" startIcon={<Stop />}
                       onClick={(event) => { event.stopPropagation(); handleStop(e.id); }}>
                       {e.status === "queued" ? "Cancel" : "Stop"}
+                    </Button>
+                  )}
+                  {(e.status === "completed" || e.status === "failed" || e.status === "cancelled") && (
+                    <Button variant="outlined" color="primary" size="small" startIcon={<Replay />}
+                      title="Rerun from frozen inputs (creates a new experiment)"
+                      onClick={(event) => { event.stopPropagation(); handleRerun(e.id); }}>
+                      Rerun
                     </Button>
                   )}
                 </CardContent>

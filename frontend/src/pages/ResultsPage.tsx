@@ -17,7 +17,7 @@ import {
   Alert,
 } from "@mui/material";
 import { Assessment } from "@mui/icons-material";
-import { resultsAPI, Result } from "../services/api";
+import { resultsAPI, experimentsAPI, Result } from "../services/api";
 import ResultDetailDrawer, {
   formatMetric,
   getComputedMetrics,
@@ -93,8 +93,27 @@ const ResultsPage: React.FC = () => {
     }
   };
 
-  const handleRerun = () => {
-    setSnackbar({ open: true, message: "Rerun functionality coming soon!", severity: "success" });
+  // Rerun via the result's source experiment: backend clones the frozen
+  // inputs into a new experiment and auto-starts it.
+  const handleRerun = async () => {
+    if (!selectedResult?.experiment_id) return;
+    setActionLoading(true);
+    try {
+      const res = await experimentsAPI.rerun(selectedResult.experiment_id);
+      setSnackbar({
+        open: true,
+        message: `Rerun started: ${res.data.name}`,
+        severity: "success",
+      });
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.detail || "Failed to rerun experiment.",
+        severity: "error",
+      });
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleDownload = async (format: "json" | "csv" = "json") => {

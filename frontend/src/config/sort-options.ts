@@ -23,4 +23,11 @@ export const WORKLOAD_SORTS = COMMON_SORTS;
 export const PLATFORM_SORTS = COMMON_SORTS;
 export const STRATEGY_SORTS = COMMON_SORTS;
 export const SCENARIO_SORTS = COMMON_SORTS;
-export const EXPERIMENT_SORTS = COMMON_SORTS;
+
+// Experiments also sort by lifecycle status (backend whitelist includes it).
+// asc groups: cancelled→completed→failed→pending→queued→running (enum order)
+export const EXPERIMENT_SORTS: SortOption[] = [
+  ...COMMON_SORTS,
+  { value: "status:asc", label: "Status A → Z" },
+  { value: "status:desc", label: "Status Z → A" },
+];

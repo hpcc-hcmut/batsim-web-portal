@@ -502,6 +502,10 @@ export const experimentsAPI = {
     api.post(`/experiments/${id}/start`),
   stop: (id: number): Promise<AxiosResponse<{ message: string }>> =>
     api.post(`/experiments/${id}/stop`),
+  // Rerun: clones the FROZEN inputs of a finished experiment into a new
+  // experiment and auto-starts it (one-click reproducibility).
+  rerun: (id: number): Promise<AxiosResponse<Experiment>> =>
+    api.post(`/experiments/${id}/rerun`),
   getStatus: (
     id: number
   ): Promise<
