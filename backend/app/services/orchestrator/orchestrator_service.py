@@ -160,8 +160,9 @@ def _execute_experiment(db: Session, experiment_id: int, manager: ContainerManag
         exp.container_network = network_name
         db.commit()
 
-        # 2. Start PyBatsim (BINDS — must start first)
-        pybatsim_id = manager.start_pybatsim(strategy_path, exp_dir)
+        # 2. Start PyBatsim (BINDS — must start first); seed goes in as
+        # BATSIM_SEED env var for strategies with random components
+        pybatsim_id = manager.start_pybatsim(strategy_path, exp_dir, seed=exp.seed)
         exp.pybatsim_container_id = pybatsim_id
         db.commit()
 

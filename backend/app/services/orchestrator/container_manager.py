@@ -85,18 +85,25 @@ class ContainerManager:
             return host_norm + abs_path[len(container_prefix):]
         return abs_path
 
-    def start_pybatsim(self, strategy_path: str, exp_dir: str) -> str:
+    def start_pybatsim(self, strategy_path: str, exp_dir: str, seed: int | None = None) -> str:
         """Start PyBatsim container (BINDS tcp://*:28000 — must start first).
 
         Args:
             strategy_path: Host path to the strategy .py file
             exp_dir: Host path to the experiment directory (all frozen files live here)
+            seed: Experiment seed, injected as BATSIM_SEED env var so strategies
+                  with random components can seed their RNG reproducibly
+                  (deterministic strategies simply ignore it)
 
         Returns:
             Container ID
         """
         abs_exp_dir = self._bind_source(exp_dir)
         strategy_filename = os.path.basename(strategy_path)
+
+        environment = {}
+        if seed is not None:
+            environment["BATSIM_SEED"] = str(seed)
 
         self.pybatsim_container = self.client.containers.run(
             image=settings.PYBATSIM_IMAGE,
@@ -108,6 +115,7 @@ class ContainerManager:
             ],
             detach=True,
             network=self.network_name,
+            environment=environment,
             volumes={
                 abs_exp_dir: {"bind": "/data", "mode": "ro"},
             },
