@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -47,6 +47,9 @@ import { SortMenu } from "../components/common/sort-menu";
 import { PaginationFooter } from "../components/common/pagination-footer";
 import { RuntimeLibsBanner } from "../components/common/runtime-libs-banner";
 import { useListQueryParams } from "../utils/use-list-query-params";
+import { useViewMode } from "../utils/use-view-mode";
+import { ViewToggle } from "../components/common/view-toggle";
+import { EntityListTable } from "../components/common/entity-list-table";
 import { STRATEGY_SORTS } from "../config/sort-options";
 
 SyntaxHighlighter.registerLanguage("python", python);
@@ -68,6 +71,7 @@ const StrategiesPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("view");
+  const [viewMode, setViewMode] = useViewMode("strategies");
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(
     null
   );
@@ -291,11 +295,14 @@ const StrategiesPage: React.FC = () => {
           >
             Upload New Strategy
           </Button>
-          <SortMenu
-            options={STRATEGY_SORTS}
-            value={`${sort}:${order}`}
-            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
-          />
+          <Stack direction="row" spacing={2} alignItems="center">
+            <ViewToggle value={viewMode} onChange={setViewMode} />
+            <SortMenu
+              options={STRATEGY_SORTS}
+              value={`${sort}:${order}`}
+              onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+            />
+          </Stack>
         </Stack>
         {loading ? (
           <Grid container spacing={3}>
@@ -311,6 +318,30 @@ const StrategiesPage: React.FC = () => {
           <Typography color="text.secondary" sx={{ mt: 4 }}>
             No strategies yet — click Upload New Strategy to add one.
           </Typography>
+        ) : viewMode === "list" ? (
+          <EntityListTable
+            rows={strategies}
+            rowKey={(s) => s.id}
+            onRowClick={(s) => openDrawer("view", s)}
+            columns={[
+              {
+                key: "name", label: "Name",
+                render: (s) => (
+                  <Typography variant="body2" fontWeight={600} noWrap title={s.name}>{s.name}</Typography>
+                ),
+              },
+              { key: "entry", label: "Entry point", render: (s) => s.main_entry || "-" },
+              { key: "version", label: "Version", align: "right", render: (s) => `v${s.version ?? 1}` },
+              {
+                key: "created", label: "Created",
+                render: (s) => (
+                  <Typography variant="caption" color="text.secondary">
+                    {formatRelativeTime(s.created_at)}
+                  </Typography>
+                ),
+              },
+            ]}
+          />
         ) : (
           <Grid container spacing={3}>
             {strategies.map((s) => (

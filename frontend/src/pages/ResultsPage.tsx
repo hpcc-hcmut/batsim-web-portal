@@ -18,6 +18,9 @@ import {
 } from "@mui/material";
 import { Assessment } from "@mui/icons-material";
 import { resultsAPI, experimentsAPI, Result } from "../services/api";
+import { useViewMode } from "../utils/use-view-mode";
+import { ViewToggle } from "../components/common/view-toggle";
+import { EntityListTable } from "../components/common/entity-list-table";
 import ResultDetailDrawer, {
   formatMetric,
   getComputedMetrics,
@@ -38,6 +41,7 @@ const ResultsPage: React.FC = () => {
   const [selectedResult, setSelectedResult] = useState<Result | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [viewMode, setViewMode] = useViewMode("results");
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -144,11 +148,14 @@ const ResultsPage: React.FC = () => {
           <Typography variant="h4" fontWeight={900}>
             Results
           </Typography>
-          <SortMenu
-            options={RESULT_SORTS}
-            value={`${sort}:${order}`}
-            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
-          />
+          <Stack direction="row" spacing={2} alignItems="center">
+            <ViewToggle value={viewMode} onChange={setViewMode} />
+            <SortMenu
+              options={RESULT_SORTS}
+              value={`${sort}:${order}`}
+              onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+            />
+          </Stack>
         </Stack>
         {loading ? (
           <Grid container spacing={3}>
@@ -162,6 +169,43 @@ const ResultsPage: React.FC = () => {
           <Alert severity="error" sx={{ mt: 4 }}>{error}</Alert>
         ) : results.length === 0 ? (
           <Typography color="text.secondary" sx={{ mt: 4 }}>No results yet — run an experiment to generate one.</Typography>
+        ) : viewMode === "list" ? (
+          <EntityListTable
+            rows={results}
+            rowKey={(r) => r.id}
+            onRowClick={openDrawer}
+            columns={[
+              {
+                key: "experiment", label: "Experiment",
+                render: (r) => (
+                  <Typography variant="body2" fontWeight={600} noWrap title={r.experiment_name || `Result #${r.id}`}>
+                    {r.experiment_name || `Result #${r.id}`}
+                  </Typography>
+                ),
+              },
+              { key: "strategy", label: "Strategy", render: (r) => r.strategy_name || "-" },
+              { key: "makespan", label: "Makespan", align: "right", render: (r) => formatMetric(r.makespan, "s") },
+              {
+                key: "success", label: "Success", align: "right",
+                render: (r) => {
+                  const cm = getComputedMetrics(r);
+                  return cm?.success_rate != null ? `${(cm.success_rate * 100).toFixed(1)}%` : "-";
+                },
+              },
+              {
+                key: "jobs", label: "Jobs", align: "right",
+                render: (r) => `${r.completed_jobs ?? 0}/${r.total_jobs ?? 0}`,
+              },
+              {
+                key: "created", label: "Created",
+                render: (r) => (
+                  <Typography variant="caption" color="text.secondary">
+                    {formatRelativeTime(r.created_at)}
+                  </Typography>
+                ),
+              },
+            ]}
+          />
         ) : (
           <Grid container spacing={3}>
             {results.map((r) => {

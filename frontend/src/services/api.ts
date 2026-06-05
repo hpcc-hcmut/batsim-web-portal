@@ -9,6 +9,8 @@ export interface ListParams {
   limit?: number;
   sort_by?: string;
   order?: "asc" | "desc";
+  /** Experiments list only: filter by source scenario (scenario drawer) */
+  scenario_id?: number;
 }
 
 // Types
@@ -56,6 +58,22 @@ export interface Platform {
   version?: number;
 }
 
+export interface ScenarioWorkloadBrief {
+  id: number;
+  name: string;
+  version: number;
+  nb_res?: number;
+  file_size?: number;
+}
+
+export interface ScenarioPlatformBrief {
+  id: number;
+  name: string;
+  version: number;
+  nb_hosts?: number;
+  nb_clusters?: number;
+}
+
 export interface Scenario {
   id: number;
   name: string;
@@ -69,6 +87,9 @@ export interface Scenario {
   workload_version?: number;
   platform_name?: string;
   platform_version?: number;
+  // Nested cheap-column briefs for composition rows (scenarios page)
+  workload?: ScenarioWorkloadBrief;
+  platform?: ScenarioPlatformBrief;
   creator_username?: string;
 }
 
@@ -85,6 +106,7 @@ export interface Strategy {
   creator_username?: string;
   nb_files?: number;
   main_entry?: string;
+  version?: number;
   strategy_files?: string; // JSON string
 }
 

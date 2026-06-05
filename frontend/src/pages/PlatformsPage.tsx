@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import {
   Box,
   Typography,
@@ -46,6 +46,9 @@ import { formatRelativeTime } from "../utils/format-relative-time";
 import { SortMenu } from "../components/common/sort-menu";
 import { PaginationFooter } from "../components/common/pagination-footer";
 import { useListQueryParams } from "../utils/use-list-query-params";
+import { useViewMode } from "../utils/use-view-mode";
+import { ViewToggle } from "../components/common/view-toggle";
+import { EntityListTable } from "../components/common/entity-list-table";
 import { PLATFORM_SORTS } from "../config/sort-options";
 
 type PanelMode = "view" | "edit" | "add";
@@ -64,6 +67,7 @@ const PlatformsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("view");
+  const [viewMode, setViewMode] = useViewMode("platforms");
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | null>(
     null
   );
@@ -244,11 +248,14 @@ const PlatformsPage: React.FC = () => {
           >
             Upload New Platform
           </Button>
-          <SortMenu
-            options={PLATFORM_SORTS}
-            value={`${sort}:${order}`}
-            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
-          />
+          <Stack direction="row" spacing={2} alignItems="center">
+            <ViewToggle value={viewMode} onChange={setViewMode} />
+            <SortMenu
+              options={PLATFORM_SORTS}
+              value={`${sort}:${order}`}
+              onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+            />
+          </Stack>
         </Stack>
         {loading ? (
           <Grid container spacing={3}>
@@ -264,6 +271,31 @@ const PlatformsPage: React.FC = () => {
           <Typography color="text.secondary" sx={{ mt: 4 }}>
             No platforms yet — click Upload New Platform to add one.
           </Typography>
+        ) : viewMode === "list" ? (
+          <EntityListTable
+            rows={platforms}
+            rowKey={(p) => p.id}
+            onRowClick={(p) => openDrawer("view", p)}
+            columns={[
+              {
+                key: "name", label: "Name",
+                render: (p) => (
+                  <Typography variant="body2" fontWeight={600} noWrap title={p.name}>{p.name}</Typography>
+                ),
+              },
+              { key: "hosts", label: "Hosts", align: "right", render: (p) => p.nb_hosts ?? "-" },
+              { key: "clusters", label: "Clusters", align: "right", render: (p) => p.nb_clusters ?? "-" },
+              { key: "version", label: "Version", align: "right", render: (p) => `v${p.version ?? 1}` },
+              {
+                key: "created", label: "Created",
+                render: (p) => (
+                  <Typography variant="caption" color="text.secondary">
+                    {formatRelativeTime(p.created_at)}
+                  </Typography>
+                ),
+              },
+            ]}
+          />
         ) : (
           <Grid container spacing={3}>
             {platforms.map((p) => (

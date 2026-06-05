@@ -12,6 +12,8 @@ import {
   Alert,
   Snackbar,
   LinearProgress,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import { PlayArrow, Stop, Add, Replay } from "@mui/icons-material";
 import {
@@ -29,6 +31,9 @@ import { SortMenu } from "../components/common/sort-menu";
 import { PaginationFooter } from "../components/common/pagination-footer";
 import { useListQueryParams } from "../utils/use-list-query-params";
 import { EXPERIMENT_SORTS } from "../config/sort-options";
+import { useViewMode } from "../utils/use-view-mode";
+import { ViewToggle } from "../components/common/view-toggle";
+import { EntityListTable, ListColumn } from "../components/common/entity-list-table";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -44,6 +49,75 @@ function getStatusColor(status: string) {
 
 // Auto-refresh interval for running experiments (ms)
 const AUTO_REFRESH_INTERVAL = 5000;
+
+// List-view columns; handlers injected so action buttons reuse page logic
+function experimentColumns(
+  onStart: (id: number) => void,
+  onStop: (id: number) => void,
+  onRerun: (id: number) => void,
+): ListColumn<Experiment>[] {
+  return [
+    {
+      key: "name", label: "Name",
+      render: (e) => (
+        <Typography variant="body2" fontWeight={600} noWrap title={e.name}>{e.name}</Typography>
+      ),
+    },
+    { key: "scenario", label: "Scenario", render: (e) => e.scenario_name || "-" },
+    { key: "strategy", label: "Strategy", render: (e) => e.strategy_name || "-" },
+    {
+      key: "status", label: "Status",
+      render: (e) => <Chip label={e.status} size="small" color={getStatusColor(e.status)} />,
+    },
+    {
+      key: "progress", label: "Progress", width: 120,
+      render: (e) =>
+        e.status === "running" ? (
+          <LinearProgress
+            variant="determinate"
+            value={e.progress_percentage || 0}
+            sx={{ height: 6, borderRadius: 3, minWidth: 80 }}
+          />
+        ) : e.status === "completed" ? "100%" : "-",
+    },
+    {
+      key: "created", label: "Created",
+      render: (e) => (
+        <Typography variant="caption" color="text.secondary">
+          {formatRelativeTime(e.created_at)}
+        </Typography>
+      ),
+    },
+    {
+      key: "actions", label: "", align: "right", width: 110,
+      render: (e) => (
+        <Stack direction="row" justifyContent="flex-end" onClick={(ev) => ev.stopPropagation()}>
+          {e.status === "pending" && (
+            <Tooltip title="Start">
+              <IconButton size="small" color="success" onClick={() => onStart(e.id)}>
+                <PlayArrow fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {(e.status === "running" || e.status === "queued") && (
+            <Tooltip title={e.status === "queued" ? "Cancel" : "Stop"}>
+              <IconButton size="small" color="error" onClick={() => onStop(e.id)}>
+                <Stop fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {(e.status === "completed" || e.status === "failed" || e.status === "cancelled") && (
+            <Tooltip title="Rerun from frozen inputs">
+              <IconButton size="small" color="primary" onClick={() => onRerun(e.id)}>
+                <Replay fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+        </Stack>
+      ),
+    },
+  ];
+}
 
 const ExperimentsPage: React.FC = () => {
   const { sort, order, page, size, skip, update } = useListQueryParams();
@@ -61,6 +135,7 @@ const ExperimentsPage: React.FC = () => {
     message: string;
     severity: "success" | "error";
   }>({ open: false, message: "", severity: "success" });
+  const [viewMode, setViewMode] = useViewMode("experiments");
 
   const fetchExperiments = useCallback(async () => {
     try {
@@ -185,6 +260,7 @@ const ExperimentsPage: React.FC = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 3 }}>
         <Typography variant="h4" fontWeight={900}>Experiments</Typography>
         <Stack direction="row" spacing={2} alignItems="center">
+          <ViewToggle value={viewMode} onChange={setViewMode} />
           <SortMenu
             options={EXPERIMENT_SORTS}
             value={`${sort}:${order}`}
@@ -200,6 +276,13 @@ const ExperimentsPage: React.FC = () => {
 
       {experiments.length === 0 ? (
         <Typography color="text.secondary">No experiments yet. Create one to get started.</Typography>
+      ) : viewMode === "list" ? (
+        <EntityListTable
+          rows={experiments}
+          rowKey={(e) => e.id}
+          onRowClick={(e) => { setSelectedExperiment(e); setDetailDialogOpen(true); }}
+          columns={experimentColumns(handleStart, handleStop, handleRerun)}
+        />
       ) : (
         <Grid container spacing={3}>
           {experiments.map((e) => (

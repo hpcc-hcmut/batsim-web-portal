@@ -50,6 +50,9 @@ import { SortMenu } from "../components/common/sort-menu";
 import { PaginationFooter } from "../components/common/pagination-footer";
 import { VirtualJobList } from "../components/common/virtual-job-list";
 import { useListQueryParams } from "../utils/use-list-query-params";
+import { useViewMode } from "../utils/use-view-mode";
+import { ViewToggle } from "../components/common/view-toggle";
+import { EntityListTable } from "../components/common/entity-list-table";
 import { WORKLOAD_SORTS } from "../config/sort-options";
 
 type PanelMode = "view" | "edit" | "add";
@@ -69,6 +72,7 @@ const WorkloadsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [panelMode, setPanelMode] = useState<PanelMode>("view");
+  const [viewMode, setViewMode] = useViewMode("workloads");
   const [selectedWorkload, setSelectedWorkload] = useState<Workload | null>(
     null
   );
@@ -275,11 +279,14 @@ const WorkloadsPage: React.FC = () => {
           >
             Upload New Workload
           </Button>
-          <SortMenu
-            options={WORKLOAD_SORTS}
-            value={`${sort}:${order}`}
-            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
-          />
+          <Stack direction="row" spacing={2} alignItems="center">
+            <ViewToggle value={viewMode} onChange={setViewMode} />
+            <SortMenu
+              options={WORKLOAD_SORTS}
+              value={`${sort}:${order}`}
+              onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+            />
+          </Stack>
         </Stack>
         {loading ? (
           <Grid container spacing={3}>
@@ -295,6 +302,34 @@ const WorkloadsPage: React.FC = () => {
           <Typography color="text.secondary" sx={{ mt: 4 }}>
             No workloads yet — click Upload New Workload to add one.
           </Typography>
+        ) : viewMode === "list" ? (
+          <EntityListTable
+            rows={workloads}
+            rowKey={(w) => w.id}
+            onRowClick={(w) => openDrawer("view", w)}
+            columns={[
+              {
+                key: "name", label: "Name",
+                render: (w) => (
+                  <Typography variant="body2" fontWeight={600} noWrap title={w.name}>{w.name}</Typography>
+                ),
+              },
+              { key: "res", label: "Resources", align: "right", render: (w) => w.nb_res ?? "-" },
+              {
+                key: "size", label: "File size", align: "right",
+                render: (w) => (w.file_size ? `${(w.file_size / 1024).toFixed(1)} KB` : "-"),
+              },
+              { key: "version", label: "Version", align: "right", render: (w) => `v${w.version ?? 1}` },
+              {
+                key: "created", label: "Created",
+                render: (w) => (
+                  <Typography variant="caption" color="text.secondary">
+                    {formatRelativeTime(w.created_at)}
+                  </Typography>
+                ),
+              },
+            ]}
+          />
         ) : (
           <Grid container spacing={3}>
             {workloads.map((w) => (
