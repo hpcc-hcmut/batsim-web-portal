@@ -333,11 +333,11 @@ const PlatformsPage: React.FC = () => {
                         >
                           {p.name}
                         </Typography>
+                        {/* Domain stats, not MIME noise: hosts · clusters · version */}
                         <Typography variant="body2" color="text.secondary">
-                          {p.file_type?.toUpperCase() || "File"} •{" "}
-                          {p.file_size
-                            ? `${(p.file_size / 1024).toFixed(1)} KB`
-                            : "Unknown size"}
+                          {p.nb_hosts != null ? `${p.nb_hosts} hosts` : "? hosts"}
+                          {p.nb_clusters ? ` · ${p.nb_clusters} cluster${p.nb_clusters > 1 ? "s" : ""}` : ""}
+                          {` · v${p.version ?? 1}`}
                         </Typography>
                       </Box>
                     </Stack>
@@ -349,11 +349,6 @@ const PlatformsPage: React.FC = () => {
                       {p.description || "No description provided."}
                     </Typography>
                     <Stack direction="row" spacing={1}>
-                      <Chip
-                        label={p.file_type || "file"}
-                        size="small"
-                        color="secondary"
-                      />
                       <Chip
                         label={formatRelativeTime(p.created_at)}
                         size="small"

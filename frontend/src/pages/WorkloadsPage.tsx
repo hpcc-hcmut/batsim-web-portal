@@ -371,11 +371,15 @@ const WorkloadsPage: React.FC = () => {
                         >
                           {w.name}
                         </Typography>
+                        {/* Domain stats, not MIME noise: resources · size · version */}
                         <Typography variant="body2" color="text.secondary">
-                          {w.file_type?.toUpperCase() || "File"} •{" "}
+                          {w.nb_res != null ? `${w.nb_res} res · ` : ""}
                           {w.file_size
-                            ? `${(w.file_size / 1024).toFixed(1)} KB`
-                            : "Unknown size"}
+                            ? w.file_size >= 1024 * 1024
+                              ? `${(w.file_size / (1024 * 1024)).toFixed(1)} MB`
+                              : `${(w.file_size / 1024).toFixed(1)} KB`
+                            : "?"}
+                          {` · v${w.version ?? 1}`}
                         </Typography>
                       </Box>
                     </Stack>
@@ -387,11 +391,6 @@ const WorkloadsPage: React.FC = () => {
                       {w.description || "No description provided."}
                     </Typography>
                     <Stack direction="row" spacing={1}>
-                      <Chip
-                        label={w.file_type || "file"}
-                        size="small"
-                        color="secondary"
-                      />
                       <Chip
                         label={formatRelativeTime(w.created_at)}
                         size="small"

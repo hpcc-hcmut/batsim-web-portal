@@ -379,11 +379,9 @@ const StrategiesPage: React.FC = () => {
                           >
                             {s.name}
                           </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {s.file_type?.toUpperCase() || "File"} •{" "}
-                            {s.file_size
-                              ? `${(s.file_size / 1024).toFixed(1)} KB`
-                              : "Unknown size"}
+                          {/* Domain stats, not MIME noise: entry · version */}
+                          <Typography variant="body2" color="text.secondary" noWrap>
+                            {s.main_entry || "Python"} · v{s.version ?? 1}
                           </Typography>
                         </Box>
                       </Stack>
@@ -414,11 +412,6 @@ const StrategiesPage: React.FC = () => {
                         {s.description || "No description provided."}
                       </Typography>
                       <Stack direction="row" spacing={1}>
-                        <Chip
-                          label={s.file_type || "file"}
-                          size="small"
-                          color="secondary"
-                        />
                         <Chip
                           label={formatRelativeTime(s.created_at)}
                           size="small"

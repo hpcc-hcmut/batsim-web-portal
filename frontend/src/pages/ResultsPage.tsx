@@ -250,6 +250,14 @@ const ResultsPage: React.FC = () => {
                           </Typography>
                         </Stack>
                         <Stack direction="row" justifyContent="space-between">
+                          <Typography variant="body2" color="text.secondary">Utilization:</Typography>
+                          <Typography variant="body2" fontWeight={600}>
+                            {r.resource_utilization != null
+                              ? `${(r.resource_utilization * 100).toFixed(1)}%`
+                              : "-"}
+                          </Typography>
+                        </Stack>
+                        <Stack direction="row" justifyContent="space-between">
                           <Typography variant="body2" color="text.secondary">Jobs:</Typography>
                           <Typography variant="body2" fontWeight={600}>
                             {r.completed_jobs ?? 0}/{r.total_jobs ?? 0}
