@@ -51,6 +51,7 @@ def get_results(
             Result.total_jobs, Result.completed_jobs, Result.failed_jobs,
             Result.makespan, Result.average_waiting_time,
             Result.average_turnaround_time, Result.resource_utilization,
+            Result.computed_metrics,  # small JSON (~300B), cards need success_rate
             Result.created_at,
         )
     )

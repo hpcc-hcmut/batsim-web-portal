@@ -89,6 +89,9 @@ class ResultListItem(BaseModel):
     average_waiting_time: Optional[float] = None
     average_turnaround_time: Optional[float] = None
     resource_utilization: Optional[float] = None
+    # Small (~300B) JSON of normalized metrics - NOT a multi-MB blob like
+    # jobs_data; cards need it for success_rate etc.
+    computed_metrics: Optional[str] = None
     created_at: datetime
     experiment_name: Optional[str] = None
     scenario_name: Optional[str] = None

@@ -181,15 +181,17 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
             <Divider />
             <Typography variant="h6">Actions</Typography>
             <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
+              {/* Keep the dialog OPEN after start/stop — the parent's auto-refresh
+                  updates selectedExperiment so the user watches status/progress here */}
               {experiment.status === "pending" && (
                 <Button variant="contained" color="success" startIcon={<PlayArrow />}
-                  onClick={() => { onStart(experiment.id); onClose(); }}>
+                  onClick={() => onStart(experiment.id)}>
                   Start Experiment
                 </Button>
               )}
               {(experiment.status === "running" || experiment.status === "queued") && (
                 <Button variant="contained" color="error" startIcon={<Stop />}
-                  onClick={() => { onStop(experiment.id); onClose(); }}>
+                  onClick={() => onStop(experiment.id)}>
                   {experiment.status === "queued" ? "Cancel" : "Stop"} Experiment
                 </Button>
               )}
