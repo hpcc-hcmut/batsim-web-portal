@@ -62,10 +62,14 @@ def get_experiments(
     limit: int = 20,
     sort_by: str = "created_at",
     order: str = "desc",
+    scenario_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     base = db.query(Experiment)
+    if scenario_id is not None:
+        # Scenario drawer: "experiments using this scenario"
+        base = base.filter(Experiment.scenario_id == scenario_id)
     set_total_count(response, base.count())
     sorted_q = apply_sort(base, Experiment, sort_by, order, EXPERIMENT_SORT_FIELDS)
     experiments = sorted_q.offset(skip).limit(limit).all()

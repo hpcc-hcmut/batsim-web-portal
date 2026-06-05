@@ -35,9 +35,37 @@ class Scenario(ScenarioInDB):
     pass
 
 
+class ScenarioWorkloadBrief(BaseModel):
+    """Cheap-column workload summary for scenario cards (no TEXT blobs)."""
+    id: int
+    name: str
+    version: int = 1
+    nb_res: Optional[int] = None
+    file_size: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioPlatformBrief(BaseModel):
+    """Cheap-column platform summary for scenario cards (no TEXT blobs)."""
+    id: int
+    name: str
+    version: int = 1
+    nb_hosts: Optional[int] = None
+    nb_clusters: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
 class ScenarioWithDetails(Scenario):
+    # Legacy flat fields — kept so existing clients don't break
     workload_name: Optional[str] = None
     workload_version: Optional[int] = None
     platform_name: Optional[str] = None
     platform_version: Optional[int] = None
     creator_username: Optional[str] = None
+    # Nested briefs for composition rows on the Scenarios page
+    workload: Optional[ScenarioWorkloadBrief] = None
+    platform: Optional[ScenarioPlatformBrief] = None

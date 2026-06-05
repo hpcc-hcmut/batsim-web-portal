@@ -1,6 +1,6 @@
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, load_only
 from app.core.database import get_db
 from app.core.list_helpers import apply_sort, set_total_count
 from app.models.user import User
@@ -33,19 +33,34 @@ def get_scenarios(
     base = db.query(Scenario)
     set_total_count(response, base.count())
     sorted_q = apply_sort(base, Scenario, sort_by, order, SCENARIO_SORT_FIELDS)
+    # Eager-load related entities with CHEAP columns only — without this,
+    # accessing scenario.workload lazy-loads the full row including multi-MB
+    # TEXT blobs (jobs/profiles), one query per scenario.
+    sorted_q = sorted_q.options(
+        joinedload(Scenario.workload).load_only(
+            Workload.id, Workload.name, Workload.version,
+            Workload.nb_res, Workload.file_size,
+        ),
+        joinedload(Scenario.platform).load_only(
+            Platform.id, Platform.name, Platform.version,
+            Platform.nb_hosts, Platform.nb_clusters,
+        ),
+    )
     scenarios = sorted_q.offset(skip).limit(limit).all()
     return [_enrich_scenario(s) for s in scenarios]
 
 
 def _enrich_scenario(scenario: Scenario) -> ScenarioWithDetails:
-    """Add related names and versions to scenario response."""
+    """Add related names/versions (legacy flat) + nested briefs to response."""
     d = ScenarioWithDetails.from_orm(scenario)
     if scenario.workload:
         d.workload_name = scenario.workload.name
         d.workload_version = getattr(scenario.workload, "version", None) or 1
+        d.workload = scenario.workload  # pydantic coerces via ScenarioWorkloadBrief
     if scenario.platform:
         d.platform_name = scenario.platform.name
         d.platform_version = getattr(scenario.platform, "version", None) or 1
+        d.platform = scenario.platform
     if scenario.creator:
         d.creator_username = scenario.creator.username
     return d
