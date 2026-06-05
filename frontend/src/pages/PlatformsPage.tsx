@@ -378,7 +378,7 @@ const PlatformsPage: React.FC = () => {
         open={drawerOpen}
         onClose={closeDrawer}
         PaperProps={{
-          sx: { width: { xs: "100%", md: 420 }, p: 3, background: "#1a202c" },
+          sx: { width: { xs: "100%", md: 560 }, p: 3, background: "#1a202c" },
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
