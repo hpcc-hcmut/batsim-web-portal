@@ -122,7 +122,11 @@ async def create_platform(
         file_size=file.size,
         file_type=file.content_type,
         created_by=current_user.id,
-        nb_hosts=validation.metadata.get("nb_hosts"),
+        # Schedulable host count (cluster radical expanded, master excluded) —
+        # falls back to raw <host> tag count for pre-fix validator results
+        nb_hosts=validation.metadata.get(
+            "nb_compute_hosts", validation.metadata.get("nb_hosts")
+        ),
         nb_clusters=validation.metadata.get("nb_clusters"),
         platform_config=content,
         version=1,
@@ -195,7 +199,9 @@ async def update_platform_file(
                 os.remove(new_path)
                 raise HTTPException(status_code=422, detail=validation.to_dict())
 
-            platform.nb_hosts = validation.metadata.get("nb_hosts")
+            platform.nb_hosts = validation.metadata.get(
+                "nb_compute_hosts", validation.metadata.get("nb_hosts")
+            )
             platform.nb_clusters = validation.metadata.get("nb_clusters")
             platform.platform_config = content
 

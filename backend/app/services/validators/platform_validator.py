@@ -90,6 +90,11 @@ def validate_platform(content: str) -> ValidationResult:
     result.metadata["nb_hosts"] = nb_hosts
     result.metadata["nb_clusters"] = nb_clusters
     result.metadata["total_compute_nodes"] = total_compute_nodes
+    # Schedulable hosts = all nodes minus the master (RJMS) host. This is the
+    # number jobs can actually run on — used for workload/platform compatibility.
+    result.metadata["nb_compute_hosts"] = max(
+        total_compute_nodes - (1 if has_master else 0), 0
+    )
     result.metadata["platform_version"] = version
 
     return result
