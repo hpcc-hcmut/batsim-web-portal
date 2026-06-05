@@ -21,6 +21,8 @@ interface Props {
   scenarios: Scenario[];
   strategies: Strategy[];
   onSnackbar: (message: string, severity: "success" | "error") => void;
+  /** Preselect a scenario (e.g. "New Experiment" CTA from the scenario drawer) */
+  initialScenarioId?: number;
 }
 
 export const ExperimentCreateDialog: React.FC<Props> = ({
@@ -30,6 +32,7 @@ export const ExperimentCreateDialog: React.FC<Props> = ({
   scenarios,
   strategies,
   onSnackbar,
+  initialScenarioId,
 }) => {
   const [formData, setFormData] = useState({
     name: "",
@@ -39,6 +42,13 @@ export const ExperimentCreateDialog: React.FC<Props> = ({
     seed: "",
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // Apply preselected scenario each time the dialog opens
+  React.useEffect(() => {
+    if (open && initialScenarioId) {
+      setFormData((f) => ({ ...f, scenario_id: String(initialScenarioId) }));
+    }
+  }, [open, initialScenarioId]);
 
   const handleCreate = async () => {
     setSubmitting(true);

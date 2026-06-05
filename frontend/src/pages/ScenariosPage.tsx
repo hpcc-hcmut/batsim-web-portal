@@ -26,15 +26,23 @@ import {
   scenariosAPI,
   workloadsAPI,
   platformsAPI,
+  strategiesAPI,
   Scenario,
   Workload,
   Platform,
+  Strategy,
 } from "../services/api";
 import { formatRelativeTime } from "../utils/format-relative-time";
 import { SortMenu } from "../components/common/sort-menu";
 import { PaginationFooter } from "../components/common/pagination-footer";
 import { useListQueryParams } from "../utils/use-list-query-params";
 import { SCENARIO_SORTS } from "../config/sort-options";
+import { ScenarioCompositionRows } from "../components/scenarios/scenario-composition-rows";
+import { ScenarioDetailDrawer } from "../components/scenarios/scenario-detail-drawer";
+import { ExperimentCreateDialog } from "../components/experiments/experiment-create-dialog";
+import { useViewMode } from "../utils/use-view-mode";
+import { ViewToggle } from "../components/common/view-toggle";
+import { EntityListTable } from "../components/common/entity-list-table";
 
 const ScenariosPage: React.FC = () => {
   const { sort, order, page, size, skip, update } = useListQueryParams();
@@ -46,6 +54,12 @@ const ScenariosPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  // Drawer + "New Experiment" CTA state
+  const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [viewMode, setViewMode] = useViewMode("scenarios");
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [createExpOpen, setCreateExpOpen] = useState(false);
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -75,9 +89,10 @@ const ScenariosPage: React.FC = () => {
   const loadOptions = async () => {
     try {
       // Dropdowns need all entities, bypass the new default 20-item pagination
-      const [wlRes, pfRes] = await Promise.all([
+      const [wlRes, pfRes, stRes] = await Promise.all([
         workloadsAPI.getAll({ limit: 1000 }),
         platformsAPI.getAll({ limit: 1000 }),
+        strategiesAPI.getAll({ limit: 1000 }),
       ]);
       const wl = Array.isArray(wlRes.data)
         ? wlRes.data
@@ -87,6 +102,7 @@ const ScenariosPage: React.FC = () => {
         : (pfRes.data as any).items || [];
       setWorkloads(wl);
       setPlatforms(pf);
+      setStrategies(Array.isArray(stRes.data) ? stRes.data : []);
     } catch {
       // non-fatal — the dialog will just show empty selects
     }
@@ -156,11 +172,14 @@ const ScenariosPage: React.FC = () => {
         >
           Create Scenario
         </Button>
-        <SortMenu
-          options={SCENARIO_SORTS}
-          value={`${sort}:${order}`}
-          onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
-        />
+        <Stack direction="row" spacing={2} alignItems="center">
+          <ViewToggle value={viewMode} onChange={setViewMode} />
+          <SortMenu
+            options={SCENARIO_SORTS}
+            value={`${sort}:${order}`}
+            onChange={(s, o) => update({ sort: s, order: o, page: 1 })}
+          />
+        </Stack>
       </Stack>
       {loading ? (
         <Grid container spacing={3}>
@@ -176,46 +195,100 @@ const ScenariosPage: React.FC = () => {
         <Typography color="text.secondary" sx={{ mt: 4 }}>
           No scenarios yet — click Create Scenario to define one.
         </Typography>
+      ) : viewMode === "list" ? (
+        <EntityListTable
+          rows={scenarios}
+          rowKey={(s) => s.id}
+          onRowClick={(s) => { setSelectedScenario(s); setDrawerOpen(true); }}
+          columns={[
+            {
+              key: "name", label: "Name",
+              render: (s) => (
+                <Typography variant="body2" fontWeight={600} noWrap title={s.name}>{s.name}</Typography>
+              ),
+            },
+            {
+              key: "workload", label: "Workload",
+              render: (s) => (
+                <Box>
+                  <Typography variant="body2" noWrap>{s.workload?.name || s.workload_name || "-"}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {s.workload?.nb_res != null ? `${s.workload.nb_res} res` : ""}
+                  </Typography>
+                </Box>
+              ),
+            },
+            {
+              key: "platform", label: "Platform",
+              render: (s) => (
+                <Box>
+                  <Typography variant="body2" noWrap>{s.platform?.name || s.platform_name || "-"}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {s.platform?.nb_hosts != null ? `${s.platform.nb_hosts} hosts` : ""}
+                  </Typography>
+                </Box>
+              ),
+            },
+            {
+              key: "compat", label: "Compatible",
+              render: (s) =>
+                s.workload?.nb_res != null && s.platform?.nb_hosts != null ? (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    color={s.workload.nb_res <= s.platform.nb_hosts ? "success" : "warning"}
+                    label={s.workload.nb_res <= s.platform.nb_hosts ? "Yes" : "Needs more hosts"}
+                  />
+                ) : "-",
+            },
+            {
+              key: "created", label: "Created",
+              render: (s) => (
+                <Typography variant="caption" color="text.secondary">
+                  {formatRelativeTime(s.created_at)}
+                </Typography>
+              ),
+            },
+          ]}
+        />
       ) : (
         <Grid container spacing={3}>
           {scenarios.map((s) => (
             <Grid item xs={12} sm={6} md={4} key={s.id}>
               <Card
+                onClick={() => { setSelectedScenario(s); setDrawerOpen(true); }}
                 sx={{
                   borderRadius: 1,
                   background: "rgba(26,32,44,0.98)",
                   height: "100%",
                   overflow: "hidden",
+                  cursor: "pointer",
+                  transition: "box-shadow 200ms",
+                  "&:hover": { boxShadow: 6 },
                 }}
               >
                 <CardContent>
-                  <Stack direction="row" alignItems="center" spacing={2} mb={2}>
-                    <Settings sx={{ fontSize: 36, color: "#4a9eff" }} />
-                    <Box sx={{ minWidth: 0, flex: 1 }}>
-                      <Typography
-                        variant="h6"
-                        fontWeight={900}
-                        noWrap
-                        title={s.name}
-                        sx={{ color: "#fff" }}
-                      >
-                        {s.name}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Workload: {s.workload_name || "-"}
-                        {s.workload_version ? ` (v${s.workload_version})` : ""} | Platform:{" "}
-                        {s.platform_name || "-"}
-                        {s.platform_version ? ` (v${s.platform_version})` : ""}
-                      </Typography>
-                    </Box>
+                  <Stack direction="row" alignItems="center" spacing={2} mb={1.5}>
+                    <Settings sx={{ fontSize: 32, color: "#4a9eff" }} />
+                    <Typography
+                      variant="h6"
+                      fontWeight={900}
+                      noWrap
+                      title={s.name}
+                      sx={{ color: "#fff", minWidth: 0, flex: 1 }}
+                    >
+                      {s.name}
+                    </Typography>
                   </Stack>
                   <Typography
                     variant="body2"
-                    sx={{ mb: 2 }}
+                    sx={{ mb: 1.5 }}
                     color="text.secondary"
                   >
                     {s.description || "No description provided."}
                   </Typography>
+                  {/* Composition rows: workload + platform with direct stats */}
+                  <ScenarioCompositionRows scenario={s} />
                   <Stack direction="row" spacing={1}>
                     <Chip
                       label={formatRelativeTime(s.created_at)}
@@ -319,6 +392,23 @@ const ScenariosPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Scenario detail drawer + prefilled New Experiment dialog */}
+      <ScenarioDetailDrawer
+        scenario={selectedScenario}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onCreateExperiment={() => setCreateExpOpen(true)}
+      />
+      <ExperimentCreateDialog
+        open={createExpOpen}
+        onClose={() => setCreateExpOpen(false)}
+        onCreated={() => setCreateExpOpen(false)}
+        scenarios={selectedScenario ? [selectedScenario] : []}
+        strategies={strategies}
+        onSnackbar={(msg, severity) => setSnack({ open: true, msg, severity })}
+        initialScenarioId={selectedScenario?.id}
+      />
 
       <Snackbar
         open={snack.open}
