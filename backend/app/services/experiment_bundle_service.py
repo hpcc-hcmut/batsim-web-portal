@@ -6,6 +6,8 @@ When an experiment is created, this service:
 3. Returns an immutable frozen_config dict for storage
 """
 
+import hashlib
+import logging
 import os
 import shutil
 import json
@@ -14,6 +16,23 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.scenario import Scenario
 from app.models.strategy import Strategy
+
+logger = logging.getLogger(__name__)
+
+
+def _file_md5(path: str) -> str | None:
+    """MD5 of file content for change-detection metadata.
+
+    Returns None on read errors — hashes are metadata, never block freeze/clone.
+    """
+    try:
+        h = hashlib.md5()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
 
 
 def freeze_experiment_config(
@@ -106,6 +125,75 @@ def freeze_experiment_config(
             "params": params or {},
         },
         "frozen_files": frozen_files,
+        # MD5 per frozen file — basis for reproducibility comparison and
+        # tamper detection (a hand-edited frozen file shows a hash mismatch).
+        "hashes": {k: _file_md5(v) for k, v in frozen_files.items()},
     }
 
     return frozen_config
+
+
+def clone_frozen_experiment(source_exp, new_experiment_id: int) -> dict:
+    """Clone frozen inputs of a finished experiment into a new experiment dir.
+
+    Copies from the SOURCE experiment's frozen snapshot (simulation_dir), NOT
+    from the original asset files — so a rerun uses byte-identical inputs even
+    if the originals were edited or deleted since (TN 2.B semantics).
+
+    Returns the new frozen_config dict. Raises ValueError when the source has
+    no frozen config or its frozen files are missing on disk.
+    """
+    try:
+        source_config = json.loads(source_exp.frozen_config or "")
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"Source experiment {source_exp.id} has no valid frozen config; "
+            "rerun requires a frozen snapshot."
+        )
+
+    source_files = source_config.get("frozen_files") or {}
+    if not source_files:
+        raise ValueError(
+            f"Source experiment {source_exp.id} has no frozen files recorded."
+        )
+
+    # Verify every frozen input still exists before touching disk
+    for key, path in source_files.items():
+        if not path or not os.path.exists(path):
+            raise ValueError(
+                f"Frozen input missing: {key} ({path}). "
+                "The source experiment's data may have been deleted from storage."
+            )
+
+    new_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(new_experiment_id))
+    os.makedirs(new_dir, exist_ok=True)
+
+    # Copy keeping original filenames — PyBatsim discovers the scheduler class
+    # by CamelCasing the strategy module name, so the name must be preserved.
+    new_files = {}
+    for key, src in source_files.items():
+        dst = os.path.join(new_dir, os.path.basename(src))
+        shutil.copy2(src, dst)
+        new_files[key] = dst
+
+    new_hashes = {k: _file_md5(v) for k, v in new_files.items()}
+
+    # Integrity check against source hashes (older experiments may lack them)
+    source_hashes = source_config.get("hashes") or {}
+    for key, src_hash in source_hashes.items():
+        if src_hash and new_hashes.get(key) and src_hash != new_hashes[key]:
+            logger.warning(
+                "Rerun clone hash mismatch for %s (source exp %s): frozen file "
+                "changed on disk since the original freeze.",
+                key, source_exp.id,
+            )
+
+    return {
+        "experiment_id": new_experiment_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "rerun_of": source_exp.id,
+        # Same logical config as the source — that is the point of a rerun
+        "config": source_config.get("config", {}),
+        "frozen_files": new_files,
+        "hashes": new_hashes,
+    }

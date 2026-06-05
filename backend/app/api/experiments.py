@@ -22,7 +22,10 @@ from app.schemas.experiment import (
     ExperimentWithDetails,
 )
 from app.api.auth import get_current_user
-from app.services.experiment_bundle_service import freeze_experiment_config
+from app.services.experiment_bundle_service import (
+    clone_frozen_experiment,
+    freeze_experiment_config,
+)
 from app.services.experiment_queue_service import (
     enqueue_experiment,
     cancel_experiment,
@@ -248,6 +251,103 @@ def start_experiment(
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidTransitionError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+_FINISHED_STATUSES = {
+    ExperimentStatus.COMPLETED,
+    ExperimentStatus.FAILED,
+    ExperimentStatus.CANCELLED,
+}
+
+
+@router.post("/{experiment_id}/rerun", response_model=ExperimentSchema)
+def rerun_experiment(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Rerun a finished experiment: clone its FROZEN inputs into a new
+    experiment and start it.
+
+    Reproducibility semantics: inputs are copied from the source experiment's
+    frozen snapshot, not re-frozen from the (possibly modified) original
+    assets. The source experiment and its Result stay untouched.
+    """
+    source = db.query(Experiment).filter(Experiment.id == experiment_id).first()
+    if not source:
+        raise HTTPException(status_code=404, detail="Experiment not found")
+    if source.created_by != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    if source.status not in _FINISHED_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail="Experiment is still active; rerun is for finished experiments",
+        )
+
+    # Unique name: {source}-rerun-N
+    base = f"{source.name}-rerun"
+    new_name = None
+    for n in range(1, 51):
+        candidate = f"{base}-{n}"
+        if not db.query(Experiment.id).filter(Experiment.name == candidate).first():
+            new_name = candidate
+            break
+    if new_name is None:
+        raise HTTPException(
+            status_code=409, detail="Too many reruns of this experiment (50 max)"
+        )
+
+    rerun_note = f"Rerun of experiment #{source.id}"
+    new_exp = Experiment(
+        name=new_name,
+        description=(
+            f"{rerun_note}. {source.description}" if source.description else rerun_note
+        ),
+        scenario_id=source.scenario_id,
+        strategy_id=source.strategy_id,
+        status=ExperimentStatus.PENDING,
+        config=source.config,
+        seed=source.seed,
+        params=source.params,
+        total_jobs=source.total_jobs,
+        created_by=current_user.id,
+    )
+    db.add(new_exp)
+    db.commit()
+    db.refresh(new_exp)
+
+    # Clone frozen inputs from the source snapshot; clean up the row on failure
+    try:
+        frozen = clone_frozen_experiment(source, new_exp.id)
+        new_exp.frozen_config = json.dumps(frozen)
+        new_exp.simulation_dir = os.path.dirname(
+            frozen["frozen_files"].get("workload_path", "")
+        )
+        db.commit()
+        db.refresh(new_exp)
+    except ValueError as e:
+        exp_dir = os.path.join(settings.SIMULATION_DATA_PATH, str(new_exp.id))
+        if os.path.exists(exp_dir):
+            shutil.rmtree(exp_dir, ignore_errors=True)
+        db.delete(new_exp)
+        db.commit()
+        raise HTTPException(status_code=409, detail=str(e))
+
+    # Auto-start: same flow as start_experiment
+    try:
+        enqueue_experiment(db, new_exp.id)
+        promoted = process_queue(db)
+        if new_exp.id in promoted:
+            run_experiment(new_exp.id)
+    except (ValueError, InvalidTransitionError) as e:
+        # Clone succeeded but start failed — keep the experiment (PENDING/QUEUED)
+        # so the user can start it manually; surface the reason in the response.
+        raise HTTPException(
+            status_code=500, detail=f"Rerun created (#{new_exp.id}) but failed to start: {e}"
+        )
+
+    db.refresh(new_exp)
+    return new_exp
 
 
 @router.post("/{experiment_id}/stop")
