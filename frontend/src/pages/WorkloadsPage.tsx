@@ -38,6 +38,7 @@ import {
 import { Storage } from "@mui/icons-material";
 import {
   workloadsAPI,
+  templatesAPI,
   extractValidationErrors,
   Workload,
   ValidationResponse,
@@ -626,6 +627,21 @@ const WorkloadsPage: React.FC = () => {
                 }
                 required={panelMode === "add"}
               />
+              {panelMode === "add" && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                  No file yet?{" "}
+                  <Typography
+                    component="a"
+                    variant="caption"
+                    color="primary"
+                    href={templatesAPI.download("workload")}
+                    sx={{ textDecoration: "underline" }}
+                  >
+                    Download the sample workload template
+                  </Typography>{" "}
+                  and start from there.
+                </Typography>
+              )}
             </Box>
             <ValidationErrorPanel validation={validationResult} />
             {formError && (

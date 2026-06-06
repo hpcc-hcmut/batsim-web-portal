@@ -51,6 +51,7 @@ import { useViewMode } from "../utils/use-view-mode";
 import { ViewToggle } from "../components/common/view-toggle";
 import { EntityListTable } from "../components/common/entity-list-table";
 import { STRATEGY_SORTS } from "../config/sort-options";
+import TemplatePreviewDialog from "../components/common/template-preview-dialog";
 
 SyntaxHighlighter.registerLanguage("python", python);
 
@@ -76,6 +77,7 @@ const StrategiesPage: React.FC = () => {
     null
   );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<{
@@ -287,14 +289,25 @@ const StrategiesPage: React.FC = () => {
         </Typography>
         <RuntimeLibsBanner />
         <Stack direction={{ xs: "column", sm: "row" }} alignItems={{ sm: "center" }} justifyContent="space-between" spacing={2} sx={{ mb: 3, width: "100%" }}>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => openDrawer("add")}
-            sx={{ borderRadius: 1, fontWeight: 700 }}
-          >
-            Upload New Strategy
-          </Button>
+          <Stack direction="row" spacing={2}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => openDrawer("add")}
+              sx={{ borderRadius: 1, fontWeight: 700 }}
+            >
+              Upload New Strategy
+            </Button>
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={<CodeIcon />}
+              onClick={() => setTemplateDialogOpen(true)}
+              sx={{ borderRadius: 1, fontWeight: 700 }}
+            >
+              View Template
+            </Button>
+          </Stack>
           <Stack direction="row" spacing={2} alignItems="center">
             <ViewToggle value={viewMode} onChange={setViewMode} />
             <SortMenu
@@ -649,6 +662,21 @@ const StrategiesPage: React.FC = () => {
                 }
                 required={panelMode === "add"}
               />
+              {panelMode === "add" && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                  No file yet?{" "}
+                  <Typography
+                    component="span"
+                    variant="caption"
+                    color="primary"
+                    sx={{ cursor: "pointer", textDecoration: "underline" }}
+                    onClick={() => setTemplateDialogOpen(true)}
+                  >
+                    View the annotated FCFS template
+                  </Typography>{" "}
+                  and start from there.
+                </Typography>
+              )}
             </Box>
             <ValidationErrorPanel validation={validationResult} />
             {formError && (
@@ -725,6 +753,13 @@ const StrategiesPage: React.FC = () => {
           </Alert>
         </Snackbar>
       </Drawer>
+
+      {/* Starter template preview (Copy + Download) */}
+      <TemplatePreviewDialog
+        open={templateDialogOpen}
+        onClose={() => setTemplateDialogOpen(false)}
+        type="strategy"
+      />
     </Box>
   );
 };

@@ -18,7 +18,10 @@ TEMPLATE_MAP = {
         "media_type": "application/xml",
     },
     "strategy": {
-        "filename": "strategy-template.py",
+        # snake_case so the file runs unchanged after upload: PyBatsim CLI
+        # discovers the scheduler class by CamelCasing the file name
+        # (strategy_template.py -> Strategy_template).
+        "filename": "strategy_template.py",
         "media_type": "text/x-python",
     },
 }

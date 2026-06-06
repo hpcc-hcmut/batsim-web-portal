@@ -36,6 +36,7 @@ import {
 } from "@mui/icons-material";
 import {
   platformsAPI,
+  templatesAPI,
   extractValidationErrors,
   Platform,
   ValidationResponse,
@@ -537,6 +538,21 @@ const PlatformsPage: React.FC = () => {
                 }
                 required={panelMode === "add"}
               />
+              {panelMode === "add" && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: "block" }}>
+                  No file yet?{" "}
+                  <Typography
+                    component="a"
+                    variant="caption"
+                    color="primary"
+                    href={templatesAPI.download("platform")}
+                    sx={{ textDecoration: "underline" }}
+                  >
+                    Download the sample platform template
+                  </Typography>{" "}
+                  and start from there.
+                </Typography>
+              )}
             </Box>
             <ValidationErrorPanel validation={validationResult} />
             {formError && (

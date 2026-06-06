@@ -610,6 +610,14 @@ export const resultsAPI = {
 export const templatesAPI = {
   download: (type: "workload" | "platform" | "strategy"): string =>
     `${API_BASE_URL}/templates/${type}`,
+  // Raw template text for in-app preview (keep response as plain string)
+  getContent: (
+    type: "workload" | "platform" | "strategy"
+  ): Promise<AxiosResponse<string>> =>
+    api.get(`/templates/${type}`, {
+      responseType: "text",
+      transformResponse: [(data) => data],
+    }),
 };
 
 // Helper to extract validation errors from axios error
