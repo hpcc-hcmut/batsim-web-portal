@@ -21,8 +21,10 @@ const SCHEMES: Record<HeatmapScheme, { low: Rgb; high: Rgb }> = {
     high: { r: 74, g: 158, b: 255 },  // portal blue (fully busy)
   },
   red: {
-    low: { r: 254, g: 247, b: 245 },  // warm near-white (idle)
-    high: { r: 153, g: 27, b: 27 },   // deep red (fully busy)
+    low: { r: 255, g: 247, b: 245 },  // warm near-white (idle)
+    // Softened from blood-red #991b1b (07/06 hotfix: "hơi ghê") - a warm
+    // brick red keeps "denser = deeper" without the gore.
+    high: { r: 217, g: 83, b: 60 },   // #d9533c brick red (fully busy)
   },
 };
 
