@@ -276,6 +276,10 @@ const DashboardPage: React.FC = () => {
             icon: <Science sx={{ fontSize: 40, color: "#4a9eff", mb: 1 }} />,
             label: "Experiments",
             value: stats.experiments,
+            // Live activity at a glance — only shown when something is running
+            sub: stats.runningExperiments > 0
+              ? `${stats.runningExperiments} running`
+              : undefined,
           },
           {
             icon: <Analytics sx={{ fontSize: 40, color: "#4a9eff", mb: 1 }} />,
@@ -315,6 +319,11 @@ const DashboardPage: React.FC = () => {
                   >
                     {stat.label}
                   </Typography>
+                  {(stat as { sub?: string }).sub && (
+                    <Typography variant="caption" sx={{ color: "#fbbf24", fontWeight: 700 }}>
+                      {(stat as { sub?: string }).sub}
+                    </Typography>
+                  )}
                 </Card>
               </Grid>
             ))}

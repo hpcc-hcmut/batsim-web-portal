@@ -6,6 +6,7 @@ import {
   LinearProgress,
   Alert,
   Skeleton,
+  CircularProgress,
 } from "@mui/material";
 import { experimentsAPI } from "../../services/api";
 import { Sparkline } from "./sparkline";
@@ -134,6 +135,9 @@ export const ProgressHeaderStrip: React.FC<ProgressHeaderStripProps> = ({
         flexWrap: "wrap",
       }}
     >
+      {/* Live spinner — visible "alive" signal even between poll updates */}
+      {live && <CircularProgress size={14} thickness={5} sx={{ flexShrink: 0 }} />}
+
       {/* Job counter */}
       <Typography
         variant="caption"
@@ -142,11 +146,14 @@ export const ProgressHeaderStrip: React.FC<ProgressHeaderStripProps> = ({
         {total ? `${completed}/${total}` : `${completed}`} jobs done ({pct}%)
       </Typography>
 
-      {/* Inline progress bar */}
+      {/* Inline progress bar; bar eases between 2s poll snapshots */}
       <LinearProgress
         variant={total ? "determinate" : "indeterminate"}
         value={total ? pct : undefined}
-        sx={{ width: 120, height: 4, borderRadius: 2, flexShrink: 0 }}
+        sx={{
+          width: 120, height: 4, borderRadius: 2, flexShrink: 0,
+          "& .MuiLinearProgress-bar": { transition: "transform 500ms linear" },
+        }}
       />
 
       {/* Running count — only when non-zero */}

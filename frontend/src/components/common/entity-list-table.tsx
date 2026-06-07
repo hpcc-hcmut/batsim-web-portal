@@ -6,6 +6,7 @@ import React from "react";
 import {
   Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from "@mui/material";
+import type { SxProps, Theme } from "@mui/material/styles";
 
 export interface ListColumn<T> {
   key: string;
@@ -20,9 +21,11 @@ interface Props<T> {
   rows: T[];
   rowKey: (row: T) => React.Key;
   onRowClick?: (row: T) => void;
+  /** Per-row style override (e.g. tint running experiments) */
+  rowSx?: (row: T) => SxProps<Theme> | undefined;
 }
 
-export function EntityListTable<T>({ columns, rows, rowKey, onRowClick }: Props<T>) {
+export function EntityListTable<T>({ columns, rows, rowKey, onRowClick, rowSx }: Props<T>) {
   return (
     // TableContainer = horizontal scroll on narrow viewports (wide-table rule)
     <TableContainer component={Paper} variant="outlined" sx={{ bgcolor: "transparent" }}>
@@ -46,7 +49,10 @@ export function EntityListTable<T>({ columns, rows, rowKey, onRowClick }: Props<
               key={rowKey(row)}
               hover
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              sx={onRowClick ? { cursor: "pointer" } : undefined}
+              sx={{
+                ...(onRowClick && { cursor: "pointer" }),
+                ...(rowSx?.(row) as object),
+              }}
             >
               {columns.map((c) => (
                 <TableCell

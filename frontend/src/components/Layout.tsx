@@ -219,11 +219,8 @@ const Layout: React.FC = () => {
               <span>Search...</span>
             </Box>
           </Box>
-          <IconButton color="inherit" sx={{ mr: 1 }}>
-            <span role="img" aria-label="theme">
-              🌓
-            </span>
-          </IconButton>
+          {/* Theme toggle removed: it had no handler (dead button) — confusing
+              for first-time users. Restore together with a real theme switch. */}
           <IconButton
             size="large"
             aria-label="account of current user"

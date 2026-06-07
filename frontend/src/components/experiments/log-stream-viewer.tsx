@@ -97,6 +97,19 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({
     if (live) setTailEnabled(true);
   }, [live]);
 
+  // One-shot: if the default tab is empty (batsim stdout is often 0 B),
+  // jump to the first stream with content so the user never lands on
+  // "No output captured." with data sitting one tab away.
+  const didAutoSelect = useRef(false);
+  useEffect(() => {
+    if (didAutoSelect.current || !streams) return;
+    didAutoSelect.current = true;
+    if ((streams[STREAM_KEYS[activeTab]]?.size_bytes ?? 0) === 0) {
+      const idx = STREAM_KEYS.findIndex((k) => (streams[k]?.size_bytes ?? 0) > 0);
+      if (idx >= 0) setActiveTab(idx);
+    }
+  }, [streams, activeTab]);
+
   // Reset scroll ref + tail-state on tab change
   const handleTabChange = (_: React.SyntheticEvent, v: number) => {
     setActiveTab(v as number);
@@ -114,7 +127,9 @@ export const LogStreamViewer: React.FC<LogStreamViewerProps> = ({
       ? lines.filter((l) => l.toLowerCase().includes(searchTerm.toLowerCase()))
       : lines;
     if (filtered.length === 0) return null;
-    return filtered.map((line, i) => renderLine(line, i + 1));
+    // Perf guard: skip token tinting on very large logs (plain render is cheap)
+    const tokenize = filtered.length < 5000;
+    return filtered.map((line, i) => renderLine(line, i + 1, tokenize));
   }, [activeStream?.content, searchTerm]);
 
   // Auto-scroll to bottom when content updates and tail is armed

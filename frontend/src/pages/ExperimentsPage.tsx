@@ -14,6 +14,10 @@ import {
   LinearProgress,
   IconButton,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 import { PlayArrow, Stop, Add, Replay } from "@mui/icons-material";
 import {
@@ -34,18 +38,7 @@ import { EXPERIMENT_SORTS } from "../config/sort-options";
 import { useViewMode } from "../utils/use-view-mode";
 import { ViewToggle } from "../components/common/view-toggle";
 import { EntityListTable, ListColumn } from "../components/common/entity-list-table";
-
-function getStatusColor(status: string) {
-  switch (status) {
-    case "completed": return "success" as const;
-    case "running": return "warning" as const;
-    case "failed": return "error" as const;
-    case "cancelled": return "default" as const;
-    case "queued": return "info" as const;
-    case "pending": return "secondary" as const;
-    default: return "default" as const;
-  }
-}
+import { ExperimentStatusChip } from "../components/experiments/experiment-status-chip";
 
 // Auto-refresh interval for running experiments (ms)
 const AUTO_REFRESH_INTERVAL = 5000;
@@ -67,14 +60,15 @@ function experimentColumns(
     { key: "strategy", label: "Strategy", render: (e) => e.strategy_name || "-" },
     {
       key: "status", label: "Status",
-      render: (e) => <Chip label={e.status} size="small" color={getStatusColor(e.status)} />,
+      render: (e) => <ExperimentStatusChip status={e.status} />,
     },
     {
       key: "progress", label: "Progress", width: 120,
       render: (e) =>
         e.status === "running" ? (
           <LinearProgress
-            variant="determinate"
+            // Sweep while 0% so a fresh run never looks stuck
+            variant={(e.progress_percentage || 0) > 0 ? "determinate" : "indeterminate"}
             value={e.progress_percentage || 0}
             sx={{ height: 6, borderRadius: 3, minWidth: 80 }}
           />
@@ -200,7 +194,14 @@ const ExperimentsPage: React.FC = () => {
     }
   };
 
-  const handleStop = async (id: number) => {
+  // Stop goes through a confirm step — a running simulation's progress is
+  // lost on stop, so guard against trigger-happy clicks (lab usability)
+  const [stopConfirmId, setStopConfirmId] = useState<number | null>(null);
+  const handleStop = (id: number) => setStopConfirmId(id);
+  const confirmStop = async () => {
+    if (stopConfirmId == null) return;
+    const id = stopConfirmId;
+    setStopConfirmId(null);
     try {
       await experimentsAPI.stop(id);
       setSnackbar({ open: true, message: "Experiment stopped.", severity: "success" });
@@ -275,13 +276,30 @@ const ExperimentsPage: React.FC = () => {
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
       {experiments.length === 0 ? (
-        <Typography color="text.secondary">No experiments yet. Create one to get started.</Typography>
+        // Empty state with a way forward — matters on a fresh VM deployment
+        <Box sx={{ textAlign: "center", py: 6 }}>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            No experiments yet. Pick a scenario and a strategy to run your first simulation.
+          </Typography>
+          <Stack direction="row" spacing={2} justifyContent="center">
+            <Button variant="contained" startIcon={<Add />} onClick={() => setCreateDialogOpen(true)}>
+              New Experiment
+            </Button>
+            <Button variant="outlined" href="/scenarios">
+              Browse Scenarios
+            </Button>
+          </Stack>
+        </Box>
       ) : viewMode === "list" ? (
         <EntityListTable
           rows={experiments}
           rowKey={(e) => e.id}
           onRowClick={(e) => { setSelectedExperiment(e); setDetailDialogOpen(true); }}
           columns={experimentColumns(handleStart, handleStop, handleRerun)}
+          // Soft amber wash on running rows: scannable without being loud
+          rowSx={(e) => e.status === "running"
+            ? { bgcolor: "rgba(251,191,36,0.05)" }
+            : undefined}
         />
       ) : (
         <Grid container spacing={3}>
@@ -296,7 +314,7 @@ const ExperimentsPage: React.FC = () => {
                     <Typography variant="h6" fontWeight={700} noWrap sx={{ maxWidth: "70%" }}>
                       {e.name}
                     </Typography>
-                    <Chip label={e.status} color={getStatusColor(e.status)} size="small" />
+                    <ExperimentStatusChip status={e.status} />
                   </Stack>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {e.description || "No description provided."}
@@ -310,7 +328,7 @@ const ExperimentsPage: React.FC = () => {
                   {e.status === "running" && (
                     <Box sx={{ mb: 2 }}>
                       <LinearProgress
-                        variant="determinate"
+                        variant={(e.progress_percentage || 0) > 0 ? "determinate" : "indeterminate"}
                         value={e.progress_percentage || 0}
                         sx={{ height: 6, borderRadius: 3 }}
                       />
@@ -360,6 +378,23 @@ const ExperimentsPage: React.FC = () => {
           onSizeChange={(s) => update({ size: s, page: 1 })}
         />
       )}
+
+      {/* Stop confirmation — progress of a running simulation is lost on stop */}
+      <Dialog open={stopConfirmId != null} onClose={() => setStopConfirmId(null)}>
+        <DialogTitle>Stop experiment?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            The simulation will be terminated and its progress will be lost.
+            You can rerun it later from the frozen inputs.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStopConfirmId(null)}>Keep running</Button>
+          <Button color="error" variant="contained" onClick={confirmStop}>
+            Stop
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <ExperimentCreateDialog
         open={createDialogOpen}

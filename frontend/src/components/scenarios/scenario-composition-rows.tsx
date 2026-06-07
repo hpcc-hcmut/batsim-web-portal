@@ -12,7 +12,8 @@ import {
   Scenario, WorkloadSummary, workloadsAPI,
 } from "../../services/api";
 
-function formatFileSize(bytes?: number): string {
+// Shared with experiment-composition-rows.tsx (same row look on both dialogs)
+export function formatFileSize(bytes?: number): string {
   if (bytes == null) return "-";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -24,10 +25,12 @@ interface RowProps {
   name: string;
   version?: number;
   caption: string;
+  /** Optional trailing element (e.g. frozen-vs-live warning chip) */
+  trailing?: React.ReactNode;
   onClick: (e: React.MouseEvent<HTMLElement>) => void;
 }
 
-const CompositionRow: React.FC<RowProps> = ({ icon, name, version, caption, onClick }) => (
+export const CompositionRow: React.FC<RowProps> = ({ icon, name, version, caption, trailing, onClick }) => (
   <Stack
     direction="row" alignItems="center" spacing={1.5}
     onClick={(e) => { e.stopPropagation(); onClick(e); }}
@@ -45,6 +48,7 @@ const CompositionRow: React.FC<RowProps> = ({ icon, name, version, caption, onCl
           {name}
         </Typography>
         {version != null && <Chip label={`v${version}`} size="small" sx={{ height: 18 }} />}
+        {trailing}
       </Stack>
       <Typography variant="caption" color="text.secondary">{caption}</Typography>
     </Box>

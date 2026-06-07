@@ -19,18 +19,9 @@ import { Science, PlayArrow, Stop, Dashboard } from "@mui/icons-material";
 import { Experiment, systemAPI } from "../../services/api";
 import { LogStreamViewer } from "./log-stream-viewer";
 import { ProgressHeaderStrip } from "./progress-header-strip";
-
-function getStatusColor(status: string) {
-  switch (status) {
-    case "completed": return "success" as const;
-    case "running": return "warning" as const;
-    case "failed": return "error" as const;
-    case "cancelled": return "default" as const;
-    case "queued": return "info" as const;
-    case "pending": return "secondary" as const;
-    default: return "default" as const;
-  }
-}
+import { ExperimentCompositionRows } from "./experiment-composition-rows";
+import { ExperimentStatusChip } from "./experiment-status-chip";
+import { ElapsedTicker } from "./elapsed-ticker";
 
 function TabPanel({ children, value, index }: { children: React.ReactNode; value: number; index: number }) {
   return (
@@ -87,7 +78,10 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
           <Science sx={{ fontSize: 32, color: "#4a9eff" }} />
           <Box>
             <Typography variant="h5" fontWeight={900}>{experiment.name}</Typography>
-            <Chip label={experiment.status} color={getStatusColor(experiment.status)} size="small" />
+            <Stack direction="row" spacing={1.5} alignItems="center">
+              <ExperimentStatusChip status={experiment.status} />
+              <ElapsedTicker startTime={experiment.start_time} active={experiment.status === "running"} />
+            </Stack>
           </Box>
         </Stack>
       </DialogTitle>
@@ -103,39 +97,45 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
         {/* Overview Tab */}
         <TabPanel value={tabValue} index={0}>
           <Stack spacing={3}>
-            <Typography variant="body2" color="text.secondary">
-              {experiment.description || "No description provided."}
-            </Typography>
-            <Divider />
-            <Typography variant="h6">Components</Typography>
-            <Stack direction="row" spacing={2} flexWrap="wrap" gap={1}>
-              <Chip label={`Scenario: ${experiment.scenario_name}`} color="primary" />
-              <Chip label={`Strategy: ${experiment.strategy_name}`} color="info" />
-              {experiment.seed != null && <Chip label={`Seed: ${experiment.seed}`} color="secondary" />}
-            </Stack>
-
-            {frozenConfig?.config && (
-              <Box>
-                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 700 }}>
-                  Frozen Configuration (Immutable)
-                </Typography>
-                <Stack spacing={0.5}>
-                  <Typography variant="body2">Workload: {frozenConfig.config.workload?.name} (v{frozenConfig.config.workload?.version})</Typography>
-                  <Typography variant="body2">Platform: {frozenConfig.config.platform?.name} (v{frozenConfig.config.platform?.version})</Typography>
-                  <Typography variant="body2">Strategy: {frozenConfig.config.strategy?.name} (v{frozenConfig.config.strategy?.version})</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Frozen at: {frozenConfig.created_at ? new Date(frozenConfig.created_at).toLocaleString() : "N/A"}
-                  </Typography>
-                </Stack>
-              </Box>
-            )}
-
+            {/* Failure reason first — the one thing a user of a failed run needs */}
             {experiment.error_message && (
-              <Alert severity="error" sx={{ mt: 2 }}>
+              <Alert severity="error">
                 <Typography variant="subtitle2">Error</Typography>
                 <Typography variant="body2">{experiment.error_message}</Typography>
               </Alert>
             )}
+            <Typography variant="body2" color="text.secondary">
+              {experiment.description || "No description provided."}
+            </Typography>
+            <Divider />
+            <Box>
+              <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 1.5 }} flexWrap="wrap" gap={1}>
+                <Typography variant="h6">Components</Typography>
+                <Chip label={`Scenario: ${experiment.scenario_name}`} color="primary" size="small" />
+                {experiment.seed != null && <Chip label={`Seed: ${experiment.seed}`} color="secondary" size="small" />}
+              </Stack>
+              {/* Rows show FROZEN versions once started; popover has live stats */}
+              <ExperimentCompositionRows experiment={experiment} />
+              {frozenConfig?.created_at && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
+                  Frozen at: {new Date(frozenConfig.created_at).toLocaleString()} (immutable snapshot)
+                </Typography>
+              )}
+              {frozenConfig?.hashes && (
+                <Box component="details" sx={{ mt: 0.5 }}>
+                  <Typography component="summary" variant="caption" sx={{ cursor: "pointer", color: "text.secondary" }}>
+                    Integrity hashes (MD5)
+                  </Typography>
+                  <Stack spacing={0.25} sx={{ mt: 0.5, pl: 1 }}>
+                    {Object.entries(frozenConfig.hashes as Record<string, string>).map(([k, v]) => (
+                      <Typography key={k} variant="caption" sx={{ fontFamily: "monospace" }}>
+                        {k}: {v}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+            </Box>
 
             <Divider />
             <Typography variant="h6">Timing</Typography>
@@ -157,10 +157,15 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
             <Typography variant="h6">Execution Status</Typography>
             {experiment.status === "running" && (
               <Box>
+                {/* Indeterminate while progress is still 0 — a frozen 0% bar
+                    reads as "stuck"; a sweeping bar reads as "working" */}
                 <LinearProgress
-                  variant="determinate"
+                  variant={(experiment.progress_percentage || 0) > 0 ? "determinate" : "indeterminate"}
                   value={experiment.progress_percentage || 0}
-                  sx={{ height: 8, borderRadius: 4, mb: 1 }}
+                  sx={{
+                    height: 8, borderRadius: 4, mb: 1,
+                    "& .MuiLinearProgress-bar": { transition: "transform 500ms linear" },
+                  }}
                 />
                 <Typography variant="body2" color="text.secondary">
                   Progress: {experiment.progress_percentage || 0}%

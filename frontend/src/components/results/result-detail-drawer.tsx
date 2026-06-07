@@ -22,6 +22,7 @@ import {
   Description,
   Code as CodeIcon,
   PlayArrow,
+  Science,
 } from "@mui/icons-material";
 import { Result } from "../../services/api";
 import { ReplayView } from "./replay-view";
@@ -49,6 +50,8 @@ interface ResultDetailDrawerProps {
   onDelete: () => void;
   onRerun: () => void;
   onDownload: (format: "json" | "csv") => void;
+  /** Opens the source experiment detail ("which config produced this?") */
+  onViewExperiment?: () => void;
 }
 
 const ResultDetailDrawer: React.FC<ResultDetailDrawerProps> = ({
@@ -58,6 +61,7 @@ const ResultDetailDrawer: React.FC<ResultDetailDrawerProps> = ({
   onDelete,
   onRerun,
   onDownload,
+  onViewExperiment,
 }) => {
   const [expandedJobs, setExpandedJobs] = useState(false);
   const [expandedSchedule, setExpandedSchedule] = useState(false);
@@ -86,6 +90,13 @@ const ResultDetailDrawer: React.FC<ResultDetailDrawerProps> = ({
           <>
             {/* Result-level actions live in the header so they're reachable regardless
                 of which tab the researcher is currently viewing. */}
+            {onViewExperiment && (
+              <Tooltip title="View source experiment (configuration, logs)">
+                <IconButton size="small" onClick={onViewExperiment} color="info">
+                  <Science />
+                </IconButton>
+              </Tooltip>
+            )}
             <Tooltip title="Rerun experiment">
               <IconButton size="small" onClick={onRerun} color="primary">
                 <PlayArrow />

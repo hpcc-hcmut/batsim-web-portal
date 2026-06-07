@@ -17,7 +17,8 @@ import {
   Alert,
 } from "@mui/material";
 import { Assessment } from "@mui/icons-material";
-import { resultsAPI, experimentsAPI, Result } from "../services/api";
+import { resultsAPI, experimentsAPI, Result, Experiment } from "../services/api";
+import { ExperimentDetailDialog } from "../components/experiments/experiment-detail-dialog";
 import { useViewMode } from "../utils/use-view-mode";
 import { ViewToggle } from "../components/common/view-toggle";
 import { EntityListTable } from "../components/common/entity-list-table";
@@ -94,6 +95,22 @@ const ResultsPage: React.FC = () => {
       setSnackbar({ open: true, message: "Failed to delete result.", severity: "error" });
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // "Which config produced this result?" — open the source experiment detail
+  const [viewedExperiment, setViewedExperiment] = useState<Experiment | null>(null);
+  const handleViewExperiment = async () => {
+    if (!selectedResult?.experiment_id) return;
+    try {
+      const res = await experimentsAPI.getById(selectedResult.experiment_id);
+      setViewedExperiment(res.data);
+    } catch {
+      setSnackbar({
+        open: true,
+        message: "Source experiment not found (it may have been deleted).",
+        severity: "error",
+      });
     }
   };
 
@@ -297,6 +314,17 @@ const ResultsPage: React.FC = () => {
         onDelete={() => setDeleteDialogOpen(true)}
         onRerun={handleRerun}
         onDownload={handleDownload}
+        onViewExperiment={handleViewExperiment}
+      />
+
+      {/* Source experiment of the open result. Results only exist for finished
+          runs, so Start/Stop actions never render here — no-op handlers are safe */}
+      <ExperimentDetailDialog
+        open={viewedExperiment != null}
+        experiment={viewedExperiment}
+        onClose={() => setViewedExperiment(null)}
+        onStart={() => {}}
+        onStop={() => {}}
       />
 
       {/* Delete Confirmation Dialog */}

@@ -231,8 +231,15 @@ const ComparePage: React.FC = () => {
               )}
             >
               {experiments.map((exp) => (
-                <MenuItem key={exp.id} value={exp.id}>
+                // Only completed runs have computed metrics — block the rest
+                // so lab users can't build an empty comparison by accident
+                <MenuItem
+                  key={exp.id}
+                  value={exp.id}
+                  disabled={exp.status !== "completed"}
+                >
                   #{exp.id} — {exp.name} ({exp.strategy_name})
+                  {exp.status !== "completed" && ` — ${exp.status}, no results yet`}
                 </MenuItem>
               ))}
             </Select>
@@ -256,6 +263,19 @@ const ComparePage: React.FC = () => {
         </Stack>
         {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       </Paper>
+
+      {/* Empty state — first visit guidance instead of a blank page */}
+      {!comparison && !loading && (
+        <Paper variant="outlined" sx={{ p: 4, textAlign: "center", bgcolor: "transparent" }}>
+          <CompareArrows sx={{ fontSize: 40, color: "text.disabled", mb: 1 }} />
+          <Typography color="text.secondary">
+            Pick 2 or more completed experiments above, then press Compare.
+          </Typography>
+          <Typography variant="caption" color="text.disabled">
+            You get a side-by-side metrics table, per-metric bar charts and a radar overview. Export to CSV anytime.
+          </Typography>
+        </Paper>
+      )}
 
       {/* Comparison Results */}
       {comparison && (
