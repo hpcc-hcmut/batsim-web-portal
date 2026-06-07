@@ -18,32 +18,42 @@ USEFUL CALLBACKS (add them to the class if you need them):
   onJobsKilled(self, jobs)          -> jobs killed (e.g. walltime reached)
   onRequestedCall(self)             -> timer set via self.bs.wake_me_up_at(t)
 
-USEFUL STATE (available on self.bs):
-  self.bs.resources_free            -> list of free resource ids
-  self.bs.nb_resources              -> total number of resources
-  self.bs.time()                    -> current simulation time
+KEY API (PyBatsim 3.x, as used by every working strategy here):
+  self.bs.nb_resources              -> total number of hosts
+  self.bs.execute_job(job)          -> start a job (set job.allocation first)
+  ProcSet                           -> resource-id set bookkeeping
+  NOTE: track free resources YOURSELF (see self.available below);
+        there is no self.bs.resources_free in this PyBatsim version.
 """
 
 from batsim.batsim import BatsimScheduler
+from procset import ProcSet
 
 
 class Strategy_template(BatsimScheduler):
-    """FCFS skeleton: allocate first available resources, in arrival order."""
+    """Simple FCFS scheduler that allocates the lowest free resource ids."""
+
+    def __init__(self, options):
+        super().__init__(options)
+        self.queue = []
+        self.available = None
+        self.nb_completed = 0
 
     def onSimulationBegins(self):
-        """Called once when BatSim starts. Initialize your state here."""
-        self.nb_completed = 0
-        self.jobs_waiting = []
-        # === CUSTOMIZE HERE: add your own bookkeeping (queues, counters...) ===
+        """Called when BatSim simulation starts. Initialize your state here."""
+        self.available = ProcSet(*range(self.bs.nb_resources))
+        # === CUSTOMIZE HERE: add your own bookkeeping (priorities, counters...) ===
 
     def onJobSubmission(self, job):
-        """Called when a new job arrives. Decide to schedule now or queue it."""
-        self.jobs_waiting.append(job)
+        """Called when a new job is submitted. Schedule it if resources available."""
+        self.queue.append(job)
         self._schedule_pending()
 
     def onJobCompletion(self, job):
-        """Called when a job finishes. Free resources are updated automatically."""
+        """Called when a job finishes. Return its resources to the free pool."""
         self.nb_completed += 1
+        if job.allocation is not None:
+            self.available = self.available | job.allocation
         # A finished job may free room for waiting jobs: try again.
         self._schedule_pending()
 
@@ -56,11 +66,20 @@ class Strategy_template(BatsimScheduler):
         priority ordering, reservations, etc.
         """
         still_waiting = []
-        for job in self.jobs_waiting:
-            free = self.bs.resources_free
-            if job.requested_resources <= len(free):
-                allocated = free[: job.requested_resources]
-                job.schedule(allocated)
+        for job in self.queue:
+            needed = job.requested_resources
+            if needed <= len(self.available):
+                # Take the first `needed` free resource ids (ProcSet iterates ascending)
+                allocated = ProcSet()
+                count = 0
+                for r in self.available:
+                    allocated = allocated | ProcSet(r)
+                    count += 1
+                    if count >= needed:
+                        break
+                self.available = self.available - allocated
+                job.allocation = allocated
+                self.bs.execute_job(job)
             else:
                 still_waiting.append(job)
-        self.jobs_waiting = still_waiting
+        self.queue = still_waiting
