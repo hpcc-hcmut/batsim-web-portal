@@ -205,7 +205,9 @@ async def update_platform_file(
             platform.nb_clusters = validation.metadata.get("nb_clusters")
             platform.platform_config = content
 
-        if platform.file_path and os.path.exists(platform.file_path):
+        # Guard old != new: same name + same filename map to the SAME path -
+        # removing it would delete the file just written (silent data loss)
+        if platform.file_path and platform.file_path != new_path and os.path.exists(platform.file_path):
             os.remove(platform.file_path)
         platform.file_path = new_path
         platform.file_size = file.size

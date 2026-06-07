@@ -347,8 +347,10 @@ async def update_workload_file(
             workload.jobs = json.dumps(data.get("jobs")) if data and data.get("jobs") else None
             workload.profiles = json.dumps(data.get("profiles")) if data and data.get("profiles") else None
 
-        # Remove old file and update record
-        if workload.file_path and os.path.exists(workload.file_path):
+        # Remove old file and update record. Guard old != new: same name +
+        # same filename map to the SAME path - removing it would delete the
+        # file just written (silent data loss)
+        if workload.file_path and workload.file_path != new_path and os.path.exists(workload.file_path):
             os.remove(workload.file_path)
         workload.file_path = new_path
         workload.file_size = file.size

@@ -228,7 +228,10 @@ async def update_strategy_file(
                 "is_main": main_entry == file.filename,
             }])
 
-        if strategy.file_path and os.path.exists(strategy.file_path):
+        # Guard old != new: same entity name + same filename produce the SAME
+        # path, and removing it here would delete the file just written
+        # (silent data loss on the most common "edit my strategy" flow).
+        if strategy.file_path and strategy.file_path != new_path and os.path.exists(strategy.file_path):
             os.remove(strategy.file_path)
         strategy.file_path = new_path
         strategy.file_size = file.size
