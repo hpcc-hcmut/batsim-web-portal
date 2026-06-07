@@ -15,6 +15,8 @@ import {
 import { Box, Paper, Typography } from "@mui/material";
 import { TimelineSeriesPoint } from "../../services/api";
 import { useTimelineCursor } from "../../utils/timeline-cursor-context";
+import { ChartExportButton } from "../common/chart-export-button";
+import { exportCanvasPng } from "../../utils/export-chart-png";
 
 // Register Chart.js modules once per app load. Re-registering is a no-op so this is safe.
 ChartJS.register(
@@ -157,7 +159,12 @@ export function TimelineLineChart({
   }, [cursor.t, tMin, tMax]);
 
   return (
-    <Paper variant="outlined" sx={{ p: 1 }}>
+    <Paper variant="outlined" sx={{ p: 1, position: "relative" }}>
+      {series.length > 0 && (
+        <ChartExportButton
+          onExport={() => chartRef.current && exportCanvasPng(chartRef.current.canvas, title)}
+        />
+      )}
       <Box sx={{ height }}>
         {series.length === 0 ? (
           <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>

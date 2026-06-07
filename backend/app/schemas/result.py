@@ -133,4 +133,21 @@ class TimelineResponse(BaseModel):
     jobs: List[TimelineJob]
     utilization_series: List[TimelineSeriesPoint]
     queue_series: List[TimelineSeriesPoint]
+    # Stacked-area layers (waiting = queue_series, running, cumulative completed)
+    running_series: List[TimelineSeriesPoint] = []
+    completed_series: List[TimelineSeriesPoint] = []
     waiting_cdf: List[TimelineSeriesPoint]
+
+
+class HeatmapResponse(BaseModel):
+    """Host x Time busy-fraction grid for the Replay heatmap panel.
+
+    rows[host][bucket] = fraction (0..1) of that bucket the host spent busy.
+    Aggregated server-side over ALL jobs (no density-mode truncation).
+    """
+    result_id: int
+    n_hosts: int
+    buckets: int
+    t0: float
+    t1: float
+    rows: List[List[float]]

@@ -101,8 +101,13 @@ def _row_to_timeline_job(row: Dict[str, str], row_index: int = 0) -> Dict[str, A
 def _build_utilization_and_queue_series(
     timeline_jobs: List[Dict[str, Any]],
     n_hosts: int,
-) -> Tuple[List[Dict[str, float]], List[Dict[str, float]]]:
-    """Sweep through start/finish/submit events to derive 2 time series.
+) -> Tuple[
+    List[Dict[str, float]],
+    List[Dict[str, float]],
+    List[Dict[str, float]],
+    List[Dict[str, float]],
+]:
+    """Sweep through start/finish/submit events to derive 4 time series.
 
     Tie-break order at the same timestamp: finish → start → submit. This is the only
     correct order — release resources before claiming them at the same instant; submit
@@ -110,9 +115,11 @@ def _build_utilization_and_queue_series(
 
     utilization_series: ratio busy resources / n_hosts at each event timestamp.
     queue_series: number of jobs submitted-but-not-yet-started at each event timestamp.
+    running_series: number of jobs started-but-not-yet-finished (stacked-area middle layer).
+    completed_series: cumulative finished jobs (stacked-area top layer).
     """
     if not timeline_jobs or n_hosts <= 0:
-        return [], []
+        return [], [], [], []
 
     events: List[Tuple[float, str, int]] = []
     for j in timeline_jobs:
@@ -129,9 +136,12 @@ def _build_utilization_and_queue_series(
 
     util_series: List[Dict[str, float]] = []
     queue_series: List[Dict[str, float]] = []
+    running_series: List[Dict[str, float]] = []
+    completed_series: List[Dict[str, float]] = []
     running_resources = 0
     submitted = 0
     started = 0
+    finished = 0
     last_t = None
 
     for t, kind, payload in events:
@@ -141,17 +151,26 @@ def _build_utilization_and_queue_series(
             started += 1
             running_resources += payload
         elif kind == "finish":
+            finished += 1
             running_resources = max(0, running_resources - payload)
 
+        point_util = {"t": t, "value": round(running_resources / n_hosts, 6)}
+        point_queue = {"t": t, "value": float(max(0, submitted - started))}
+        point_running = {"t": t, "value": float(max(0, started - finished))}
+        point_completed = {"t": t, "value": float(finished)}
         if last_t is None or t != last_t:
-            util_series.append({"t": t, "value": round(running_resources / n_hosts, 6)})
-            queue_series.append({"t": t, "value": float(max(0, submitted - started))})
+            util_series.append(point_util)
+            queue_series.append(point_queue)
+            running_series.append(point_running)
+            completed_series.append(point_completed)
             last_t = t
         else:
-            util_series[-1] = {"t": t, "value": round(running_resources / n_hosts, 6)}
-            queue_series[-1] = {"t": t, "value": float(max(0, submitted - started))}
+            util_series[-1] = point_util
+            queue_series[-1] = point_queue
+            running_series[-1] = point_running
+            completed_series[-1] = point_completed
 
-    return util_series, queue_series
+    return util_series, queue_series, running_series, completed_series
 
 
 def _build_waiting_cdf(timeline_jobs: List[Dict[str, Any]]) -> List[Dict[str, float]]:
@@ -201,6 +220,8 @@ def derive_timeline_aggregates(
             "jobs": [],
             "utilization_series": [],
             "queue_series": [],
+            "running_series": [],
+            "completed_series": [],
             "waiting_cdf": [],
         }
 
@@ -222,7 +243,9 @@ def derive_timeline_aggregates(
     submits = [j["submission_time"] for j in timeline_jobs]
     makespan = max(finishes) - min(submits) if finishes else 0.0
 
-    util_series, queue_series = _build_utilization_and_queue_series(timeline_jobs, n_hosts)
+    util_series, queue_series, running_series, completed_series = (
+        _build_utilization_and_queue_series(timeline_jobs, n_hosts)
+    )
     cdf = _build_waiting_cdf(timeline_jobs)
 
     total_jobs = len(timeline_jobs)
@@ -241,5 +264,7 @@ def derive_timeline_aggregates(
         "jobs": timeline_jobs,
         "utilization_series": util_series,
         "queue_series": queue_series,
+        "running_series": running_series,
+        "completed_series": completed_series,
         "waiting_cdf": cdf,
     }

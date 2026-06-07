@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { Line } from "react-chartjs-2";
 import type { ChartOptions, TooltipItem } from "chart.js";
 import { Box, Paper, Typography } from "@mui/material";
 import { TimelineSeriesPoint } from "../../services/api";
+import { ChartExportButton } from "../common/chart-export-button";
+import { exportCanvasPng } from "../../utils/export-chart-png";
 
 interface Props {
   series: TimelineSeriesPoint[];
@@ -18,6 +20,8 @@ interface Props {
  * how heavy is the tail of late jobs.
  */
 export function WaitingCdfChart({ series, height = 140 }: Props) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chartRef = useRef<any>(null);
   const data = useMemo(
     () => ({
       datasets: [
@@ -91,14 +95,25 @@ export function WaitingCdfChart({ series, height = 140 }: Props) {
   );
 
   return (
-    <Paper variant="outlined" sx={{ p: 1 }}>
+    <Paper variant="outlined" sx={{ p: 1, position: "relative" }}>
+      {series.length > 0 && (
+        <ChartExportButton
+          onExport={() => chartRef.current && exportCanvasPng(chartRef.current.canvas, "waiting-cdf")}
+        />
+      )}
       <Box sx={{ height }}>
         {series.length === 0 ? (
           <Typography variant="caption" color="text.secondary" sx={{ p: 1 }}>
             No waiting time data available.
           </Typography>
         ) : (
-          <Line data={data} options={options} />
+          <Line
+            ref={(instance) => {
+              chartRef.current = instance;
+            }}
+            data={data}
+            options={options}
+          />
         )}
       </Box>
     </Paper>

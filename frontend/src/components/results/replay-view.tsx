@@ -18,6 +18,8 @@ import { TimelineCursorProvider } from "../../utils/timeline-cursor-context";
 import { ScheduleGantt } from "./schedule-gantt";
 import { TimelineLineChart } from "./timeline-line-chart";
 import { WaitingCdfChart } from "./waiting-cdf-chart";
+import { HostUtilizationHeatmap } from "./host-utilization-heatmap";
+import { JobStateStackedArea } from "./job-state-stacked-area";
 
 interface Props {
   resultId: number;
@@ -91,7 +93,9 @@ export function ReplayView({ resultId }: Props) {
     });
     const utilWindow = data.utilization_series.filter((p) => p.t >= t0 && p.t <= t1);
     const queueWindow = data.queue_series.filter((p) => p.t >= t0 && p.t <= t1);
-    return { jobsInWindow, utilWindow, queueWindow };
+    const runningWindow = (data.running_series ?? []).filter((p) => p.t >= t0 && p.t <= t1);
+    const completedWindow = (data.completed_series ?? []).filter((p) => p.t >= t0 && p.t <= t1);
+    return { jobsInWindow, utilWindow, queueWindow, runningWindow, completedWindow };
   }, [data, range]);
 
   // Total bar count for density decision — based on the FULL job set (data.jobs), not the
@@ -221,6 +225,18 @@ export function ReplayView({ resultId }: Props) {
           height={Math.min(520, Math.max(180, 24 + (hostRange[1] - hostRange[0]) * 8))}
         />
 
+        {/* Host x Time heatmap — compressed schedule view that stays readable
+            where a 50k-job Gantt turns to noise. Server-aggregated over ALL jobs,
+            so density-mode truncation never distorts it. */}
+        <HostUtilizationHeatmap
+          resultId={resultId}
+          tStart={range[0]}
+          tEnd={range[1]}
+          hostStart={hostRange[0]}
+          hostEnd={hostRange[1]}
+          height={Math.min(300, Math.max(120, (hostRange[1] - hostRange[0]) * 4))}
+        />
+
         {/* Utilization over time — shares x-axis + cursor with Gantt */}
         <TimelineLineChart
           title="Utilization (busy / hosts)"
@@ -233,15 +249,27 @@ export function ReplayView({ resultId }: Props) {
           color="#1976d2"
         />
 
-        {/* Queue depth over time */}
-        <TimelineLineChart
-          title="Queue depth (waiting jobs)"
-          series={visible.queueWindow}
-          yMin={0}
-          tMin={range[0]}
-          tMax={range[1]}
-          color="#ef6c00"
-        />
+        {/* Job-state composition (stacked). The amber "waiting" layer IS the old
+            queue-depth line, now with running + completed context on the same axis.
+            Falls back to the plain queue line for results predating the new series. */}
+        {(visible.runningWindow.length || visible.completedWindow.length) ? (
+          <JobStateStackedArea
+            waiting={visible.queueWindow}
+            running={visible.runningWindow}
+            completed={visible.completedWindow}
+            tMin={range[0]}
+            tMax={range[1]}
+          />
+        ) : (
+          <TimelineLineChart
+            title="Queue depth (waiting jobs)"
+            series={visible.queueWindow}
+            yMin={0}
+            tMin={range[0]}
+            tMax={range[1]}
+            color="#ef6c00"
+          />
+        )}
 
         {/* Waiting CDF — axis is waiting time (not simulation time), so independent */}
         <WaitingCdfChart series={data.waiting_cdf} />

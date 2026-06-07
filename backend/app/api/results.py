@@ -21,9 +21,11 @@ from app.schemas.result import (
     ResultWithExperiment,
     ResultListItem,
     TimelineResponse,
+    HeatmapResponse,
 )
 from app.api.auth import get_current_user
 from app.services.post_processing.timeline import derive_timeline_aggregates
+from app.services.post_processing.heatmap import derive_host_utilization_heatmap
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +241,24 @@ def compare_experiments(
             "status": exp.status.value if hasattr(exp.status, "value") else str(exp.status),
             "seed": exp.seed,
             "has_result": result is not None,
+            # result_id lets the UI fetch per-result timelines (CDF overlay, per-job scatter)
+            "result_id": result.id if result else None,
         }
+
+        # Frozen identity: powers the "same workload" comparability badge and
+        # the strategy version chip. Frozen (not live) versions are the truth
+        # of what actually ran.
+        if exp.frozen_config:
+            try:
+                fc_config = json.loads(exp.frozen_config).get("config") or {}
+                wl = fc_config.get("workload") or {}
+                st = fc_config.get("strategy") or {}
+                if wl.get("name"):
+                    entry["frozen_workload_name"] = wl.get("name")
+                    entry["frozen_workload_version"] = wl.get("version")
+                entry["frozen_strategy_version"] = st.get("version")
+            except (json.JSONDecodeError, AttributeError):
+                pass
 
         if result:
             entry.update({
@@ -429,6 +448,38 @@ def get_result_timeline(
 
     data = derive_timeline_aggregates(result.jobs_data, n_hosts_hint=n_hosts_hint, limit=limit)
     return TimelineResponse(result_id=result.id, **data)
+
+
+@router.get("/{result_id}/heatmap", response_model=HeatmapResponse)
+def get_result_heatmap(
+    result_id: int,
+    buckets: int = Query(240, ge=50, le=500, description="Number of time buckets"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Host x Time busy-fraction grid for the Replay heatmap panel.
+
+    Aggregated server-side over ALL jobs so big runs (density mode) still
+    render a truthful heatmap.
+    """
+    result = db.query(Result).filter(Result.id == result_id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Result not found")
+    if not result.jobs_data:
+        raise HTTPException(status_code=404, detail="Result has no jobs data (out_jobs.csv missing)")
+
+    n_hosts_hint = None
+    if result.computed_metrics:
+        try:
+            cm = json.loads(result.computed_metrics)
+            nb_machines = cm.get("nb_computing_machines")
+            if isinstance(nb_machines, int) and nb_machines > 0:
+                n_hosts_hint = nb_machines
+        except json.JSONDecodeError:
+            pass
+
+    data = derive_host_utilization_heatmap(result.jobs_data, n_hosts_hint=n_hosts_hint, buckets=buckets)
+    return HeatmapResponse(result_id=result.id, **data)
 
 
 @router.get("/{result_id}/export")

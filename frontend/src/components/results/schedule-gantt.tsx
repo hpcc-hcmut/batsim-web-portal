@@ -2,9 +2,11 @@ import { useMemo, useRef, useEffect, useState, useCallback } from "react";
 import { Stage, Layer, Rect, Line, Text } from "react-konva";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type Konva from "konva";
-import { Box, Paper, Stack, Typography } from "@mui/material";
+import { Box, IconButton, Paper, Stack, Tooltip as MuiTooltip, Typography } from "@mui/material";
+import { Download } from "@mui/icons-material";
 import { TimelineJob } from "../../services/api";
 import { useTimelineCursor } from "../../utils/timeline-cursor-context";
+import { exportKonvaStagePng } from "../../utils/export-chart-png";
 
 interface Props {
   jobs: TimelineJob[];
@@ -81,6 +83,7 @@ export function ScheduleGantt({
 }: Props) {
   const cursor = useTimelineCursor();
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<Konva.Stage | null>(null); // PNG export handle
   const [measuredW, setMeasuredW] = useState(width);
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
 
@@ -213,8 +216,18 @@ export function ScheduleGantt({
           {density ? " (density)" : ""}
         </Typography>
         {cursor.t != null && <Typography variant="caption">t = {cursor.t.toFixed(2)}s</Typography>}
+        <Box sx={{ flex: 1 }} />
+        <MuiTooltip title="Download Gantt as PNG">
+          <IconButton
+            size="small"
+            onClick={() => stageRef.current && exportKonvaStagePng(stageRef.current, "gantt")}
+          >
+            <Download fontSize="inherit" />
+          </IconButton>
+        </MuiTooltip>
       </Stack>
       <Stage
+        ref={stageRef}
         width={W}
         height={H}
         onMouseMove={handleMouseMove}

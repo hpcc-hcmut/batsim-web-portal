@@ -236,7 +236,20 @@ export interface TimelineResponse {
   jobs: TimelineJob[];
   utilization_series: TimelineSeriesPoint[];
   queue_series: TimelineSeriesPoint[];
+  // Stacked-area layers (waiting = queue_series, running, cumulative completed)
+  running_series?: TimelineSeriesPoint[];
+  completed_series?: TimelineSeriesPoint[];
   waiting_cdf: TimelineSeriesPoint[];
+}
+
+// Host x Time busy-fraction grid (server-aggregated over ALL jobs)
+export interface HeatmapResponse {
+  result_id: number;
+  n_hosts: number;
+  buckets: number;
+  t0: number;
+  t1: number;
+  rows: number[][]; // rows[host][bucket] = busy fraction 0..1
 }
 
 // PyBatSim runtime manifest (GET /system/runtime). 503 detail uses RuntimeManifestError shape.
@@ -604,6 +617,12 @@ export const resultsAPI = {
     limit?: number,
   ): Promise<AxiosResponse<TimelineResponse>> =>
     api.get(`/results/${id}/timeline`, { params: limit ? { limit } : {} }),
+  // Host x Time heatmap grid for the Replay panel
+  getHeatmap: (
+    id: number,
+    buckets: number = 240,
+  ): Promise<AxiosResponse<HeatmapResponse>> =>
+    api.get(`/results/${id}/heatmap`, { params: { buckets } }),
 };
 
 // Templates API

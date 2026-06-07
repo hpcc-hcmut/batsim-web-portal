@@ -38,6 +38,10 @@ import {
 } from "chart.js";
 import { Bar, Radar } from "react-chartjs-2";
 import { Experiment, experimentsAPI, resultsAPI } from "../services/api";
+import WaitingCdfOverlay from "../components/compare/waiting-cdf-overlay";
+import PerJobScatter from "../components/compare/per-job-scatter";
+import { ChartExportButton } from "../components/common/chart-export-button";
+import { exportCanvasPng } from "../utils/export-chart-png";
 
 ChartJS.register(
   CategoryScale,
@@ -102,7 +106,33 @@ const COLORS = [
   "#20c997", "#ff922b", "#845ef7", "#339af0", "#f06595",
 ];
 
+/**
+ * Delta-vs-baseline cell styling ("heatmap table"): green tint when the value
+ * beats the baseline for that metric's direction, red when worse. Tint
+ * intensity scales with |delta%|, capped at 40% so outliers don't blind.
+ */
+function deltaCell(
+  key: string,
+  val: unknown,
+  base: unknown,
+): { bg?: string; pct?: string } {
+  if (typeof val !== "number" || typeof base !== "number" || base === 0) return {};
+  const delta = (val - base) / Math.abs(base);
+  if (Math.abs(delta) < 0.005) return {}; // effectively equal - no noise
+  const better = LOWER_IS_BETTER.has(key) ? delta < 0 : delta > 0;
+  const alpha = 0.05 + Math.min(Math.abs(delta) / 0.4, 1) * 0.22;
+  return {
+    bg: better ? `rgba(81,207,102,${alpha})` : `rgba(255,107,107,${alpha})`,
+    pct: `${delta > 0 ? "+" : ""}${(delta * 100).toFixed(0)}%`,
+  };
+}
+
 const ComparePage: React.FC = () => {
+  // Chart instances for PNG export (bars keyed by metric)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const barRefs = React.useRef<Record<string, any>>({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const radarRef = React.useRef<any>(null);
   const [experiments, setExperiments] = useState<Experiment[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [comparison, setComparison] = useState<any[] | null>(null);
@@ -141,6 +171,36 @@ const ComparePage: React.FC = () => {
 
   const completedExperiments = comparison ? comparison.filter((e) => e.has_result) : [];
 
+  // Strategy-first label (Comparison is about strategies, not run names);
+  // falls back to appending the experiment name when two columns would collide
+  const displayLabel = (exp: any): string => {
+    const tag = (e: any) =>
+      `${e.strategy_name || "?"}${e.frozen_strategy_version ? ` v${e.frozen_strategy_version}` : ""}`;
+    const base = tag(exp);
+    const dup = completedExperiments.filter((e) => tag(e) === base).length > 1;
+    return dup ? `${base} (${exp.experiment_name})` : base;
+  };
+
+  // One fixed color per compared experiment, used consistently across
+  // table chips, bars, radar and the CDF overlay
+  const colorOf = (exp: any): string => {
+    const idx = completedExperiments.findIndex((e) => e.experiment_id === exp.experiment_id);
+    return idx >= 0 ? COLORS[idx % COLORS.length] : "#6b7280";
+  };
+
+  // Comparability check on FROZEN workload identity (what actually ran)
+  const workloadKeys = completedExperiments.map((e) =>
+    e.frozen_workload_name ? `${e.frozen_workload_name} (v${e.frozen_workload_version})` : null,
+  );
+  const knownWorkloads = new Set(workloadKeys.filter(Boolean) as string[]);
+  const sameWorkload =
+    completedExperiments.length > 0 &&
+    knownWorkloads.size === 1 &&
+    workloadKeys.every(Boolean);
+  const mixedWorkloads = knownWorkloads.size > 1;
+
+  const baseline = completedExperiments[0] ?? null;
+
   // CSV export — flat row per experiment, columns = id/meta + every numeric metric.
   // Null values stay empty so Excel doesn't render "0" for "not measured".
   const handleExportCsv = () => {
@@ -164,7 +224,7 @@ const ComparePage: React.FC = () => {
 
   // Build per-metric chart data — one Bar chart per metric (Phase 1 Option B: multi-panel)
   const perMetricBarData = (metric: string) => ({
-    labels: completedExperiments.map((exp) => exp.experiment_name),
+    labels: completedExperiments.map((exp) => displayLabel(exp)),
     datasets: [
       {
         label: METRIC_LABELS[metric] || metric,
@@ -192,7 +252,7 @@ const ComparePage: React.FC = () => {
     return {
       labels: axes.map((m) => METRIC_LABELS[m] || m),
       datasets: completedExperiments.map((exp, i) => ({
-        label: exp.experiment_name,
+        label: displayLabel(exp),
         data: axes.map((m) => normalize(m, Number(exp[m]) || 0)),
         backgroundColor: `${COLORS[i % COLORS.length]}33`, // ~20% opacity
         borderColor: COLORS[i % COLORS.length],
@@ -280,11 +340,34 @@ const ComparePage: React.FC = () => {
       {/* Comparison Results */}
       {comparison && (
         <>
+          {/* Comparability badge: comparing metrics across different workloads
+              is apples-vs-oranges - warn loudly, but do not block */}
+          {sameWorkload && (
+            <Chip
+              color="success"
+              variant="outlined"
+              size="small"
+              label={`Same workload: ${workloadKeys[0]}`}
+              sx={{ mb: 2 }}
+            />
+          )}
+          {mixedWorkloads && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              These experiments ran on different workloads ({[...knownWorkloads].join(" / ")}).
+              Metrics are not directly comparable.
+            </Alert>
+          )}
+
           {/* Metrics Table */}
           <Paper sx={{ p: 3, mb: 3 }}>
             <Typography variant="h6" gutterBottom>
               Metrics Comparison
             </Typography>
+            {baseline && completedExperiments.length > 1 && (
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                Cells are tinted vs the baseline (first column): green = better, red = worse.
+              </Typography>
+            )}
             <TableContainer>
               <Table size="small">
                 <TableHead>
@@ -293,10 +376,25 @@ const ComparePage: React.FC = () => {
                     {comparison.map((exp) => (
                       <TableCell key={exp.experiment_id} sx={{ fontWeight: 700 }} align="right">
                         {exp.experiment_name}
+                        {baseline && exp.experiment_id === baseline.experiment_id && (
+                          <Typography component="span" variant="caption" color="text.secondary">
+                            {" "}(baseline)
+                          </Typography>
+                        )}
                         <br />
-                        <Typography variant="caption" color="text.secondary">
-                          {exp.strategy_name}
-                        </Typography>
+                        {/* Strategy identity chip - same color as this experiment's
+                            bars/radar/CDF lines so charts read without legends */}
+                        <Chip
+                          size="small"
+                          label={displayLabel(exp)}
+                          sx={{
+                            height: 20,
+                            fontWeight: 600,
+                            color: colorOf(exp),
+                            bgcolor: `${colorOf(exp)}1f`,
+                            border: `1px solid ${colorOf(exp)}66`,
+                          }}
+                        />
                       </TableCell>
                     ))}
                   </TableRow>
@@ -316,13 +414,27 @@ const ComparePage: React.FC = () => {
                         {comparison.map((exp) => {
                           const val = exp[key];
                           const isBest = val != null && val === best && values.length > 1;
+                          // Delta tint vs baseline column (skip the baseline itself)
+                          const d =
+                            baseline && exp.experiment_id !== baseline.experiment_id
+                              ? deltaCell(key, val, baseline[key])
+                              : {};
                           return (
                             <TableCell
                               key={exp.experiment_id}
                               align="right"
-                              sx={{ fontWeight: isBest ? 700 : 400, color: isBest ? "#51cf66" : "inherit" }}
+                              sx={{
+                                fontWeight: isBest ? 700 : 400,
+                                color: isBest ? "#51cf66" : "inherit",
+                                bgcolor: d.bg,
+                              }}
                             >
                               {val != null ? (typeof val === "number" ? val.toFixed(4) : val) : "—"}
+                              {d.pct && (
+                                <Typography variant="caption" display="block" color="text.secondary">
+                                  {d.pct}
+                                </Typography>
+                              )}
                             </TableCell>
                           );
                         })}
@@ -351,8 +463,17 @@ const ComparePage: React.FC = () => {
                   }
                   return (
                     <Grid item xs={12} sm={6} md={4} key={metric}>
-                      <Box sx={{ height: 220 }}>
+                      <Box sx={{ height: 220, position: "relative" }}>
+                        <ChartExportButton
+                          onExport={() => {
+                            const c = barRefs.current[metric];
+                            if (c) exportCanvasPng(c.canvas, `compare-${metric}`);
+                          }}
+                        />
                         <Bar
+                          ref={(instance) => {
+                            barRefs.current[metric] = instance;
+                          }}
                           data={perMetricBarData(metric)}
                           options={{
                             responsive: true,
@@ -404,8 +525,16 @@ const ComparePage: React.FC = () => {
                 "lower is better" (waiting, turnaround, slowdown, makespan) are inverted, so a larger
                 polygon area indicates a better strategy overall.
               </Typography>
-              <Box sx={{ height: 420, maxWidth: 600, mx: "auto" }}>
+              <Box sx={{ height: 420, maxWidth: 600, mx: "auto", position: "relative" }}>
+                <ChartExportButton
+                  onExport={() =>
+                    radarRef.current && exportCanvasPng(radarRef.current.canvas, "compare-radar")
+                  }
+                />
                 <Radar
+                  ref={(instance) => {
+                    radarRef.current = instance;
+                  }}
                   data={radarData}
                   options={{
                     responsive: true,
@@ -428,6 +557,48 @@ const ComparePage: React.FC = () => {
                 />
               </Box>
             </Paper>
+          )}
+
+          {/* Waiting-time CDF overlay - one stepped line per strategy, shared axes */}
+          {completedExperiments.some((e) => e.result_id) && (
+            <Box sx={{ mt: 3 }}>
+              <WaitingCdfOverlay
+                entries={completedExperiments
+                  .filter((e) => e.result_id)
+                  .map((e) => ({
+                    resultId: e.result_id as number,
+                    label: displayLabel(e),
+                    color: colorOf(e),
+                  }))}
+              />
+            </Box>
+          )}
+
+          {/* Per-job scatter - unlocked for exactly 2 runs on the SAME frozen workload */}
+          {completedExperiments.length === 2 &&
+            completedExperiments.every((e) => e.result_id) &&
+            (sameWorkload ? (
+              <PerJobScatter
+                a={{
+                  resultId: completedExperiments[0].result_id as number,
+                  label: displayLabel(completedExperiments[0]),
+                  color: colorOf(completedExperiments[0]),
+                }}
+                b={{
+                  resultId: completedExperiments[1].result_id as number,
+                  label: displayLabel(completedExperiments[1]),
+                  color: colorOf(completedExperiments[1]),
+                }}
+              />
+            ) : (
+              <Alert severity="info" sx={{ mb: 3 }}>
+                Per-job comparison requires both experiments to share the same frozen workload.
+              </Alert>
+            ))}
+          {completedExperiments.length > 2 && (
+            <Typography variant="caption" color="text.disabled" display="block" sx={{ mb: 3 }}>
+              Tip: select exactly 2 experiments to unlock the per-job scatter comparison.
+            </Typography>
           )}
         </>
       )}
