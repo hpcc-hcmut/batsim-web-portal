@@ -8,24 +8,48 @@
  * Rendering: the full grid is painted ONCE onto an offscreen canvas
  * (1px per cell), then the visible window is a cheap drawImage crop -
  * time/host slider sync costs ~0ms regardless of grid size.
+ * Color ramp + axis gutters per 07/06 feedback (see heatmap-color-scale.ts).
  */
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Box, IconButton, Skeleton, Stack, Tooltip, Typography } from "@mui/material";
+import {
+  Alert, Box, IconButton, Skeleton, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
+} from "@mui/material";
 import { Download } from "@mui/icons-material";
 import { HeatmapResponse, resultsAPI } from "../../services/api";
 import { exportCanvasPng } from "../../utils/export-chart-png";
+import {
+  HeatmapScheme, cellColor, legendGradient, schemeSwatch,
+} from "./heatmap-color-scale";
 
-// Single-hue scale: dark slate -> portal blue (no rainbow noise)
-const LOW = { r: 17, g: 24, b: 39 };
-const HIGH = { r: 74, g: 158, b: 255 };
+const SCHEME_STORAGE_KEY = "heatmapScheme";
 
-function cellColor(frac: number): [number, number, number] {
-  const f = Math.max(0, Math.min(1, frac));
-  return [
-    Math.round(LOW.r + (HIGH.r - LOW.r) * f),
-    Math.round(LOW.g + (HIGH.g - LOW.g) * f),
-    Math.round(LOW.b + (HIGH.b - LOW.b) * f),
-  ];
+function loadScheme(): HeatmapScheme {
+  return localStorage.getItem(SCHEME_STORAGE_KEY) === "red" ? "red" : "blue";
+}
+
+const GUTTER_LEFT = 44; // host labels column (matches Gantt's label budget)
+const GUTTER_BOTTOM = 18; // time tick row
+
+const TICK_STYLE: React.CSSProperties = {
+  position: "absolute",
+  fontSize: 10,
+  color: "#9ca3af",
+  whiteSpace: "nowrap",
+};
+
+function formatTime(t: number): string {
+  return t >= 100 ? `${Math.round(t)}s` : `${t.toFixed(1)}s`;
+}
+
+/** Evenly spaced ticks across [lo, hi] - returns value + fractional position */
+function makeTicks(lo: number, hi: number, count: number): Array<{ v: number; frac: number }> {
+  if (hi <= lo) return [];
+  const out: Array<{ v: number; frac: number }> = [];
+  for (let i = 0; i < count; i++) {
+    const frac = i / (count - 1);
+    out.push({ v: lo + frac * (hi - lo), frac });
+  }
+  return out;
 }
 
 interface Props {
@@ -51,6 +75,13 @@ export const HostUtilizationHeatmap: React.FC<Props> = ({
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hover, setHover] = useState<string | null>(null);
+  // Color scheme: blue (dark UI) or red (paper-style, print-friendly exports)
+  const [scheme, setScheme] = useState<HeatmapScheme>(loadScheme);
+  const changeScheme = (s: HeatmapScheme | null) => {
+    if (!s) return;
+    setScheme(s);
+    localStorage.setItem(SCHEME_STORAGE_KEY, s);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +112,7 @@ export const HostUtilizationHeatmap: React.FC<Props> = ({
     for (let h = 0; h < data.n_hosts; h++) {
       const row = data.rows[h] || [];
       for (let b = 0; b < data.buckets; b++) {
-        const [r, g, bl] = cellColor(row[b] ?? 0);
+        const [r, g, bl] = cellColor(row[b] ?? 0, scheme);
         const o = (h * data.buckets + b) * 4;
         img.data[o] = r;
         img.data[o + 1] = g;
@@ -91,7 +122,7 @@ export const HostUtilizationHeatmap: React.FC<Props> = ({
     }
     ctx.putImageData(img, 0, 0);
     return cv;
-  }, [data]);
+  }, [data, scheme]);
 
   // Crop the visible (time x host) window onto the on-screen canvas
   useEffect(() => {
@@ -123,6 +154,22 @@ export const HostUtilizationHeatmap: React.FC<Props> = ({
     setHover(`host ${host} · t=${t.toFixed(0)}s · busy ${(frac * 100).toFixed(0)}%`);
   };
 
+  // Axis ticks for the visible window (recomputed on slider moves - cheap)
+  const hostTicks = useMemo(() => {
+    const span = hostEnd - hostStart;
+    if (span <= 0) return [];
+    const count = Math.min(8, Math.max(2, Math.floor(span / 8) + 2));
+    return makeTicks(hostStart, hostEnd - 1, count).map(({ v, frac }) => ({
+      label: `h${Math.round(v)}`,
+      frac,
+    }));
+  }, [hostStart, hostEnd]);
+
+  const timeTicks = useMemo(
+    () => makeTicks(tStart, tEnd, 6).map(({ v, frac }) => ({ label: formatTime(v), frac })),
+    [tStart, tEnd],
+  );
+
   if (error) return <Alert severity="warning">{error}</Alert>;
 
   return (
@@ -131,18 +178,25 @@ export const HostUtilizationHeatmap: React.FC<Props> = ({
         <Typography variant="caption" sx={{ fontWeight: 700 }}>
           Host utilization heatmap
         </Typography>
-        {/* Gradient legend */}
-        <Box
-          sx={{
-            width: 80,
-            height: 8,
-            borderRadius: 1,
-            background: `linear-gradient(to right, rgb(${LOW.r},${LOW.g},${LOW.b}), rgb(${HIGH.r},${HIGH.g},${HIGH.b}))`,
-          }}
-        />
+        {/* Gradient legend (gamma ramp, deepest color = fully busy) */}
+        <Box sx={{ width: 80, height: 8, borderRadius: 1, background: legendGradient(scheme) }} />
         <Typography variant="caption" color="text.secondary">
           0% - 100% busy
         </Typography>
+        {/* Scheme toggle: blue (dark UI) / red (paper-style) */}
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={scheme}
+          onChange={(_, v) => changeScheme(v)}
+          sx={{ ml: 0.5 }}
+        >
+          {(["blue", "red"] as HeatmapScheme[]).map((s) => (
+            <ToggleButton key={s} value={s} sx={{ px: 0.75, py: 0.25 }} aria-label={`${s} scheme`}>
+              <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: schemeSwatch(s) }} />
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
           {hover ?? ""}
@@ -159,25 +213,59 @@ export const HostUtilizationHeatmap: React.FC<Props> = ({
         </Tooltip>
       </Stack>
       {!data ? (
-        <Skeleton variant="rectangular" height={height} sx={{ borderRadius: 1 }} />
+        <Skeleton variant="rectangular" height={height + GUTTER_BOTTOM} sx={{ borderRadius: 1 }} />
       ) : !data.rows.length ? (
         <Alert severity="info">No allocation data for a heatmap.</Alert>
       ) : (
-        <canvas
-          ref={canvasRef}
-          width={960}
-          height={height}
-          onMouseMove={handleMove}
-          onMouseLeave={() => setHover(null)}
-          style={{
-            width: "100%",
-            height,
-            borderRadius: 4,
-            border: "1px solid #2d3748",
-            display: "block",
-            cursor: "crosshair",
-          }}
-        />
+        <Box sx={{ display: "flex" }}>
+          {/* Left gutter: host row labels at proportional offsets */}
+          <Box sx={{ width: GUTTER_LEFT, position: "relative", height }}>
+            {hostTicks.map((t) => (
+              <span
+                key={t.label}
+                style={{
+                  ...TICK_STYLE,
+                  right: 6,
+                  top: `calc(${t.frac * 100}% - ${t.frac * 12}px)`,
+                }}
+              >
+                {t.label}
+              </span>
+            ))}
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <canvas
+              ref={canvasRef}
+              width={960}
+              height={height}
+              onMouseMove={handleMove}
+              onMouseLeave={() => setHover(null)}
+              style={{
+                width: "100%",
+                height,
+                borderRadius: 4,
+                border: "1px solid #2d3748",
+                display: "block",
+                cursor: "crosshair",
+              }}
+            />
+            {/* Bottom gutter: time ticks for the visible window */}
+            <Box sx={{ position: "relative", height: GUTTER_BOTTOM }}>
+              {timeTicks.map((t, i) => (
+                <span
+                  key={i}
+                  style={{
+                    ...TICK_STYLE,
+                    top: 2,
+                    left: `calc(${t.frac * 100}% - ${t.frac * 36}px)`,
+                  }}
+                >
+                  {t.label}
+                </span>
+              ))}
+            </Box>
+          </Box>
+        </Box>
       )}
     </Box>
   );

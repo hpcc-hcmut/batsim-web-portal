@@ -194,7 +194,9 @@ export function ReplayView({ resultId }: Props) {
           </Box>
           {data.n_hosts > 1 && (
             <Box sx={{ flex: "1 1 200px", minWidth: 150 }}>
-              <Typography variant="caption" color="text.secondary">
+              {/* "info" (light blue), NOT "secondary": secondary renders gray on the
+                  dark theme and reads as a disabled slider (user feedback 07/06) */}
+              <Typography variant="caption" sx={{ color: "text.primary", fontWeight: 600 }}>
                 Hosts: {hostRange[0]} – {hostRange[1] - 1} of {data.n_hosts}
               </Typography>
               <Slider
@@ -206,7 +208,7 @@ export function ReplayView({ resultId }: Props) {
                 valueLabelDisplay="auto"
                 disableSwap
                 size="small"
-                color="secondary"
+                color="info"
               />
             </Box>
           )}
