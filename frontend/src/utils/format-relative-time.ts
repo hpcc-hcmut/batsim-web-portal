@@ -26,3 +26,13 @@ export function formatRelativeTime(iso?: string | null): string {
   const deltaYr = Math.round(deltaDay / 365);
   return rtf.format(deltaYr, "year");
 }
+
+// Absolute local datetime from a backend ISO string. Backend stores UTC without
+// a 'Z' suffix, so normalize before formatting to avoid a GMT+N offset (showing
+// UTC clock instead of local).
+export function formatDateTime(iso?: string | null): string {
+  if (!iso) return "-";
+  const normalized = /[Z+]/.test(iso) || /[+-]\d{2}:\d{2}$/.test(iso) ? iso : iso + "Z";
+  const d = new Date(normalized);
+  return isNaN(d.getTime()) ? "-" : d.toLocaleString();
+}

@@ -224,12 +224,12 @@ const ResultsPage: React.FC = () => {
             ]}
           />
         ) : (
-          <Grid container spacing={3}>
+          <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" }}>
             {results.map((r) => {
               const cm = getComputedMetrics(r);
               return (
-                <Grid size={{ xs: 12, sm: 6, md: 4 }} key={r.id}>
                   <Card
+                    key={r.id}
                     sx={{
                       borderRadius: 1,
                       background: "rgba(26,32,44,0.98)",
@@ -291,10 +291,9 @@ const ResultsPage: React.FC = () => {
                       </Stack>
                     </CardContent>
                   </Card>
-                </Grid>
               );
             })}
-          </Grid>
+          </Box>
         )}
         {!loading && !error && (
           <PaginationFooter

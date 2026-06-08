@@ -22,6 +22,7 @@ import { ProgressHeaderStrip } from "./progress-header-strip";
 import { ExperimentCompositionRows } from "./experiment-composition-rows";
 import { ExperimentStatusChip } from "./experiment-status-chip";
 import { ElapsedTicker } from "./elapsed-ticker";
+import { formatDateTime } from "../../utils/format-relative-time";
 
 function TabPanel({ children, value, index }: { children: React.ReactNode; value: number; index: number }) {
   return (
@@ -118,7 +119,7 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
               <ExperimentCompositionRows experiment={experiment} />
               {frozenConfig?.created_at && (
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>
-                  Frozen at: {new Date(frozenConfig.created_at).toLocaleString()} (immutable snapshot)
+                  Frozen at: {formatDateTime(frozenConfig.created_at)} (immutable snapshot)
                 </Typography>
               )}
               {frozenConfig?.hashes && (
@@ -140,12 +141,12 @@ export const ExperimentDetailDialog: React.FC<Props> = ({
             <Divider />
             <Typography variant="h6">Timing</Typography>
             <Stack spacing={1}>
-              <Typography variant="body2">Created: {new Date(experiment.created_at).toLocaleString()}</Typography>
+              <Typography variant="body2">Created: {formatDateTime(experiment.created_at)}</Typography>
               {experiment.start_time && (
-                <Typography variant="body2">Started: {new Date(experiment.start_time).toLocaleString()}</Typography>
+                <Typography variant="body2">Started: {formatDateTime(experiment.start_time)}</Typography>
               )}
               {experiment.end_time && (
-                <Typography variant="body2">Ended: {new Date(experiment.end_time).toLocaleString()}</Typography>
+                <Typography variant="body2">Ended: {formatDateTime(experiment.end_time)}</Typography>
               )}
             </Stack>
           </Stack>
