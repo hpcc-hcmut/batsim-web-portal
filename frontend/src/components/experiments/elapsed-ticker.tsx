@@ -31,7 +31,11 @@ export const ElapsedTicker: React.FC<Props> = ({ startTime, active }) => {
   }, [active]);
 
   if (!startTime || !active) return null;
-  const start = new Date(startTime).getTime();
+  // Backend stores UTC but omits the 'Z' suffix → new Date() would parse it as
+  // local time (GMT+N offset, e.g. "Running for 7h" in GMT+7). Append 'Z' when
+  // no timezone designator is present so it parses as UTC.
+  const normalized = /[Z+]/.test(startTime) || /[+-]\d{2}:\d{2}$/.test(startTime) ? startTime : startTime + "Z";
+  const start = new Date(normalized).getTime();
   if (Number.isNaN(start)) return null;
 
   return (
