@@ -399,8 +399,7 @@ def get_experiment_status(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    if exp.created_by != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Read open to any authenticated user (LAN/VPN lab survey convenience).
 
     frozen = None
     if exp.frozen_config:
@@ -440,8 +439,7 @@ def get_experiment_progress(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    if exp.created_by != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Read (status/progress) open to any authenticated user (LAN/VPN lab survey convenience).
 
     # Compute wall_seconds (handles naive datetimes stored by SQLite).
     # For completed/failed/cancelled experiments, freeze at end - start so the
@@ -577,8 +575,7 @@ def get_experiment_log_streams(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    if exp.created_by != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Log read open to any authenticated user (LAN/VPN lab survey convenience; mutations stay restricted).
 
     # Live path: experiment is running — fetch directly from containers
     if exp.status == ExperimentStatus.RUNNING:
@@ -646,8 +643,7 @@ def download_experiment_log_stream(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    if exp.created_by != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Log download open to any authenticated user (LAN/VPN lab survey convenience).
 
     content, _size, _truncated = _get_stream_content(exp, stream_name)
     filename = f"exp-{experiment_id}-{stream_name}.txt"
@@ -681,8 +677,7 @@ def get_experiment_logs(
     exp = db.query(Experiment).filter(Experiment.id == experiment_id).first()
     if exp is None:
         raise HTTPException(status_code=404, detail="Experiment not found")
-    if exp.created_by != current_user.id and current_user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # Log read open to any authenticated user (LAN/VPN lab survey convenience).
 
     # If running, try to get live logs from containers
     if exp.status == ExperimentStatus.RUNNING:
