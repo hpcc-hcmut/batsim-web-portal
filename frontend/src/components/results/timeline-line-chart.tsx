@@ -30,6 +30,10 @@ ChartJS.register(
   Filler,
 );
 
+// Dark theme: axis tick labels + legend text white (Chart.js default is gray, hard to read).
+// Chart.defaults is a singleton, so this applies to all Chart.js charts app-wide.
+ChartJS.defaults.color = "#ffffff";
+
 interface Props {
   title: string;
   series: TimelineSeriesPoint[];

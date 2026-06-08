@@ -302,10 +302,10 @@ const ExperimentsPage: React.FC = () => {
             : undefined}
         />
       ) : (
-        <Grid container spacing={3}>
+        <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" }}>
           {experiments.map((e) => (
-            <Grid key={e.id} size={{ xs: 12, sm: 6, md: 4 }}>
               <Card
+                key={e.id}
                 sx={{ cursor: "pointer", "&:hover": { boxShadow: 6 }, height: "100%" }}
                 onClick={() => { setSelectedExperiment(e); setDetailDialogOpen(true); }}
               >
@@ -365,9 +365,8 @@ const ExperimentsPage: React.FC = () => {
                   )}
                 </CardContent>
               </Card>
-            </Grid>
           ))}
-        </Grid>
+        </Box>
       )}
       {!loading && !error && (
         <PaginationFooter
