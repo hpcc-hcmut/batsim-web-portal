@@ -15,7 +15,10 @@ services:
       # Runtime manifest for /system/runtime endpoint — lives outside ./backend
       - ./docker/pybatsim-extended/runtime-info.json:/app/docker/pybatsim-extended/runtime-info.json:ro
     env_file:
-      - ./backend/.env
+      # required:false → a fresh clone without backend/.env still boots (compose v2.24+).
+      # Every critical value has a default via `environment:` below or config.py.
+      - path: ./backend/.env
+        required: false
     environment:
       - STORAGE_PATH=/app/storage
       - SIMULATION_DATA_PATH=/app/storage/experiments
@@ -70,7 +73,7 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
       - grafana-data:/var/lib/grafana
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
       - GF_SECURITY_ALLOW_EMBEDDING=true

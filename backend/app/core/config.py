@@ -2,7 +2,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Database
+    # Database — default keeps the SQLite file at the CWD (backend/batsim.db in
+    # native dev, /app/batsim.db in-container). VM deploy overrides this via env
+    # to sqlite:///./storage/batsim.db so the DB lives under the persisted
+    # storage/ mount (survives re-clone, captured by a storage/ backup).
     DATABASE_URL: str = "sqlite:///./batsim.db"
 
     # JWT
