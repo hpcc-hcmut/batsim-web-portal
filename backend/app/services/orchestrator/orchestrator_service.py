@@ -111,6 +111,19 @@ def _run_experiment_thread(experiment_id: int):
         manager.cleanup()
         with _lock:
             _running_managers.pop(experiment_id, None)
+        # Slot just freed (COMPLETED/FAILED/CANCELLED) — promote the next QUEUED
+        # experiment(s). Without this, a queued experiment stays stranded until an
+        # unrelated start/cancel event happens to call process_queue, because the
+        # completion path itself never advanced the queue (no periodic reconciler).
+        try:
+            from app.services.experiment_queue_service import process_queue
+            for promoted_id in process_queue(db):
+                logger.info(
+                    f"[Exp {experiment_id}] freed slot → promoting queued exp {promoted_id}"
+                )
+                run_experiment(promoted_id)
+        except Exception as e:
+            logger.warning(f"[Exp {experiment_id}] queue drain after finish failed: {e}")
         db.close()
 
 
