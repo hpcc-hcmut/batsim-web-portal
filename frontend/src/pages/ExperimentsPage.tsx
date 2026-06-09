@@ -19,7 +19,7 @@ import {
   DialogContent,
   DialogActions,
 } from "@mui/material";
-import { PlayArrow, Stop, Add, Replay } from "@mui/icons-material";
+import { PlayArrow, Stop, Add, Replay, Delete } from "@mui/icons-material";
 import {
   experimentsAPI,
   Experiment,
@@ -48,6 +48,7 @@ function experimentColumns(
   onStart: (id: number) => void,
   onStop: (id: number) => void,
   onRerun: (id: number) => void,
+  onDelete: (id: number) => void,
 ): ListColumn<Experiment>[] {
   return [
     {
@@ -104,6 +105,13 @@ function experimentColumns(
             <Tooltip title="Rerun from frozen inputs">
               <IconButton size="small" color="primary" onClick={() => onRerun(e.id)}>
                 <Replay fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          {e.status !== "running" && e.status !== "queued" && (
+            <Tooltip title="Delete">
+              <IconButton size="small" color="error" onClick={() => onDelete(e.id)}>
+                <Delete fontSize="small" />
               </IconButton>
             </Tooltip>
           )}
@@ -215,6 +223,26 @@ const ExperimentsPage: React.FC = () => {
     }
   };
 
+  // Delete goes through a confirm step (record + results removed, irreversible)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const handleDelete = (id: number) => setDeleteConfirmId(id);
+  const confirmDelete = async () => {
+    if (deleteConfirmId == null) return;
+    const id = deleteConfirmId;
+    setDeleteConfirmId(null);
+    try {
+      await experimentsAPI.delete(id);
+      setSnackbar({ open: true, message: "Experiment deleted.", severity: "success" });
+      fetchExperiments();
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.detail || "Failed to delete experiment.",
+        severity: "error",
+      });
+    }
+  };
+
   // Rerun: backend clones the frozen inputs into a new experiment and starts it
   const handleRerun = async (id: number) => {
     try {
@@ -295,7 +323,7 @@ const ExperimentsPage: React.FC = () => {
           rows={experiments}
           rowKey={(e) => e.id}
           onRowClick={(e) => { setSelectedExperiment(e); setDetailDialogOpen(true); }}
-          columns={experimentColumns(handleStart, handleStop, handleRerun)}
+          columns={experimentColumns(handleStart, handleStop, handleRerun, handleDelete)}
           // Soft amber wash on running rows: scannable without being loud
           rowSx={(e) => e.status === "running"
             ? { bgcolor: "rgba(251,191,36,0.05)" }
@@ -363,6 +391,12 @@ const ExperimentsPage: React.FC = () => {
                       Rerun
                     </Button>
                   )}
+                  {e.status !== "running" && e.status !== "queued" && (
+                    <Button variant="text" color="error" size="small" startIcon={<Delete />} sx={{ ml: 1 }}
+                      onClick={(event) => { event.stopPropagation(); handleDelete(e.id); }}>
+                      Delete
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
           ))}
@@ -392,6 +426,20 @@ const ExperimentsPage: React.FC = () => {
           <Button color="error" variant="contained" onClick={confirmStop}>
             Stop
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete confirmation — removes the experiment record + its results */}
+      <Dialog open={deleteConfirmId != null} onClose={() => setDeleteConfirmId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>Xóa experiment?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Xóa thí nghiệm này? Bản ghi và kết quả của nó sẽ bị xóa, không hoàn tác.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmId(null)}>Hủy</Button>
+          <Button color="error" variant="contained" onClick={confirmDelete}>Xóa</Button>
         </DialogActions>
       </Dialog>
 

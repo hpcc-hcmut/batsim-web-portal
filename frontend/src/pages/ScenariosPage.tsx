@@ -20,8 +20,9 @@ import {
   MenuItem,
   Snackbar,
   Alert,
+  IconButton,
 } from "@mui/material";
-import { Settings } from "@mui/icons-material";
+import { Settings, Delete } from "@mui/icons-material";
 import {
   scenariosAPI,
   workloadsAPI,
@@ -67,6 +68,8 @@ const ScenariosPage: React.FC = () => {
     platform_id: "",
   });
   const [submitting, setSubmitting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Scenario | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [snack, setSnack] = useState<{
     open: boolean;
     msg: string;
@@ -155,6 +158,26 @@ const ScenariosPage: React.FC = () => {
       setSnack({ open: true, msg, severity: "error" });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await scenariosAPI.delete(deleteTarget.id);
+      setSnack({ open: true, msg: "Scenario deleted.", severity: "success" });
+      setDeleteTarget(null);
+      await loadScenarios();
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail;
+      const msg =
+        typeof detail === "string"
+          ? detail
+          : "Không xóa được — scenario có thể đang được thí nghiệm dùng.";
+      setSnack({ open: true, msg, severity: "error" });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -249,6 +272,19 @@ const ScenariosPage: React.FC = () => {
                 </Typography>
               ),
             },
+            {
+              key: "actions", label: "", align: "right", width: 56,
+              render: (s) => (
+                <IconButton
+                  size="small"
+                  color="error"
+                  title="Delete scenario"
+                  onClick={(e) => { e.stopPropagation(); setDeleteTarget(s); }}
+                >
+                  <Delete fontSize="small" />
+                </IconButton>
+              ),
+            },
           ]}
         />
       ) : (
@@ -279,6 +315,14 @@ const ScenariosPage: React.FC = () => {
                     >
                       {s.name}
                     </Typography>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      title="Delete scenario"
+                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(s); }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
                   </Stack>
                   <Typography
                     variant="body2"
@@ -409,6 +453,28 @@ const ScenariosPage: React.FC = () => {
         onSnackbar={(msg, severity) => setSnack({ open: true, msg, severity })}
         initialScenarioId={selectedScenario?.id}
       />
+
+      <Dialog
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Xóa scenario?</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2">
+            Xóa "{deleteTarget?.name}"? Hành động này không hoàn tác.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>
+            Hủy
+          </Button>
+          <Button onClick={handleDelete} color="error" variant="contained" disabled={deleting}>
+            {deleting ? "Đang xóa..." : "Xóa"}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Snackbar
         open={snack.open}
