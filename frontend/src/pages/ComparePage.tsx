@@ -8,6 +8,8 @@ import {
   Chip,
   Stack,
   Alert,
+  Autocomplete,
+  TextField,
   FormControl,
   InputLabel,
   Select,
@@ -274,36 +276,21 @@ const ComparePage: React.FC = () => {
       {/* Experiment Selector */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" gap={1}>
-          <FormControl sx={{ minWidth: 400 }}>
-            <InputLabel>Select Experiments</InputLabel>
-            <Select
-              multiple
-              value={selectedIds}
-              onChange={handleSelectionChange}
-              input={<OutlinedInput label="Select Experiments" />}
-              renderValue={(selected) => (
-                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                  {selected.map((id) => {
-                    const exp = experiments.find((e) => e.id === id);
-                    return <Chip key={id} label={exp?.name || `#${id}`} size="small" />;
-                  })}
-                </Box>
-              )}
-            >
-              {experiments.map((exp) => (
-                // Only completed runs have computed metrics — block the rest
-                // so lab users can't build an empty comparison by accident
-                <MenuItem
-                  key={exp.id}
-                  value={exp.id}
-                  disabled={exp.status !== "completed"}
-                >
-                  #{exp.id} — {exp.name} ({exp.strategy_name})
-                  {exp.status !== "completed" && ` — ${exp.status}, no results yet`}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          {/* Autocomplete: type-to-filter the experiment list (tester feedback).
+              `experiments` is already pre-filtered to completed runs on load. */}
+          <Autocomplete
+            multiple
+            sx={{ minWidth: 400 }}
+            options={experiments}
+            getOptionLabel={(e) => `#${e.id} — ${e.name} (${e.strategy_name})`}
+            isOptionEqualToValue={(a, b) => a.id === b.id}
+            value={experiments.filter((e) => selectedIds.includes(e.id))}
+            onChange={(_, val) => setSelectedIds(val.map((e) => e.id))}
+            filterSelectedOptions
+            renderInput={(params) => (
+              <TextField {...params} label="Select Experiments" placeholder="Gõ để lọc…" />
+            )}
+          />
           <Button
             variant="contained"
             onClick={handleCompare}
