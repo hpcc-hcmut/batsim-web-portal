@@ -201,6 +201,9 @@ const Layout: React.FC = () => {
           >
             <Box
               sx={{
+                // Hidden: global-search placeholder has no handler yet (dead control).
+                // Restore together with a real search implementation.
+                display: "none",
                 background: "rgba(255,255,255,0.04)",
                 borderRadius: 2,
                 px: 2,
