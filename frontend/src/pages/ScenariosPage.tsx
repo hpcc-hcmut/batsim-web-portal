@@ -174,7 +174,7 @@ const ScenariosPage: React.FC = () => {
       const msg =
         typeof detail === "string"
           ? detail
-          : "Không xóa được — scenario có thể đang được thí nghiệm dùng.";
+          : "Couldn't delete — scenario may be in use by an experiment.";
       setSnack({ open: true, msg, severity: "error" });
     } finally {
       setDeleting(false);
@@ -460,18 +460,18 @@ const ScenariosPage: React.FC = () => {
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Xóa scenario?</DialogTitle>
+        <DialogTitle>Delete scenario?</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            Xóa "{deleteTarget?.name}"? Hành động này không hoàn tác.
+            Delete "{deleteTarget?.name}"? This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDeleteTarget(null)} disabled={deleting}>
-            Hủy
+            Cancel
           </Button>
           <Button onClick={handleDelete} color="error" variant="contained" disabled={deleting}>
-            {deleting ? "Đang xóa..." : "Xóa"}
+            {deleting ? "Deleting..." : "Delete"}
           </Button>
         </DialogActions>
       </Dialog>

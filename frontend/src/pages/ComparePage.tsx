@@ -286,9 +286,10 @@ const ComparePage: React.FC = () => {
             isOptionEqualToValue={(a, b) => a.id === b.id}
             value={experiments.filter((e) => selectedIds.includes(e.id))}
             onChange={(_, val) => setSelectedIds(val.map((e) => e.id))}
+            disableCloseOnSelect
             filterSelectedOptions
             renderInput={(params) => (
-              <TextField {...params} label="Select Experiments" placeholder="Gõ để lọc…" />
+              <TextField {...params} label="Select Experiments" placeholder="Type to filter…" />
             )}
           />
           <Button

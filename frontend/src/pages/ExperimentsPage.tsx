@@ -431,15 +431,15 @@ const ExperimentsPage: React.FC = () => {
 
       {/* Delete confirmation — removes the experiment record + its results */}
       <Dialog open={deleteConfirmId != null} onClose={() => setDeleteConfirmId(null)} maxWidth="xs" fullWidth>
-        <DialogTitle>Xóa experiment?</DialogTitle>
+        <DialogTitle>Delete experiment?</DialogTitle>
         <DialogContent>
           <Typography variant="body2">
-            Xóa thí nghiệm này? Bản ghi và kết quả của nó sẽ bị xóa, không hoàn tác.
+            Delete this experiment? Its record and results will be removed; this cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmId(null)}>Hủy</Button>
-          <Button color="error" variant="contained" onClick={confirmDelete}>Xóa</Button>
+          <Button onClick={() => setDeleteConfirmId(null)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={confirmDelete}>Delete</Button>
         </DialogActions>
       </Dialog>
 
