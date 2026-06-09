@@ -197,14 +197,22 @@ export function ReplayView({ resultId }: Props) {
               {/* "info" (light blue), NOT "secondary": secondary renders gray on the
                   dark theme and reads as a disabled slider (user feedback 07/06) */}
               <Typography variant="caption" sx={{ color: "text.primary", fontWeight: 600 }}>
-                Hosts: {hostRange[0]} – {hostRange[1] - 1} of {data.n_hosts}
+                Hosts: {hostRange[0]} – {Math.max(hostRange[0], hostRange[1] - 1)} of {data.n_hosts}
               </Typography>
               <Slider
                 value={hostRange}
                 min={0}
                 max={data.n_hosts}
                 step={1}
-                onChange={(_, v) => setHostRange(v as [number, number])}
+                onChange={(_, v) => {
+                  let [a, b] = v as [number, number];
+                  // giữ tối thiểu 1 host khi 2 thanh trượt trùng nhau (tránh cửa sổ rỗng + nhãn "88 – 87")
+                  if (b - a < 1) {
+                    if (b >= data.n_hosts) a = b - 1;
+                    else b = a + 1;
+                  }
+                  setHostRange([a, b]);
+                }}
                 valueLabelDisplay="auto"
                 disableSwap
                 size="small"
