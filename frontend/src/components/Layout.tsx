@@ -211,7 +211,6 @@ const Layout: React.FC = () => {
                 minWidth: 180,
                 color: "inherit",
                 fontSize: 15,
-                display: "flex",
                 alignItems: "center",
                 opacity: 0.7,
               }}
