@@ -8,7 +8,8 @@ A modern web portal for managing BatSim simulations with React + TypeScript fron
 
 - [Features](#features)
 - [Project Structure](#project-structure)
-- [Implementation Status](#implementation-status)
+- [Status](#status)
+- [Deployment and Security](#deployment-and-security)
 - [Quick Start](#quick-start)
 - [API Documentation](#api-documentation)
 - [Technologies Used](#technologies-used)
@@ -52,29 +53,40 @@ batsim-web-portal/
 └── README.md
 ```
 
-## Implementation Status
+## Status
 
-### ✅ Completed
-- **Backend**: FastAPI with SQLAlchemy models, Pydantic schemas, authentication
-- **Frontend**: React + TypeScript + Material-UI with routing and authentication
-- **Database**: SQLite with models for Users, Workloads, Platforms, Scenarios, Strategies, Experiments, Results
-- **Authentication**: JWT-based login/register with role management
-- **API**: RESTful endpoints for all entities with file upload/download
-- **UI**: Modern Material-UI interface with responsive design
+Feature-complete and deployed for lab evaluation. All features listed above are
+implemented, including container orchestration, live experiment monitoring,
+system metrics and comparative analytics.
 
-### 🚧 In Progress
-- **Workloads Page**: CRUD operations with file upload
-- **Platforms Page**: CRUD operations with file upload
-- **Scenarios Page**: Create scenarios from workloads and platforms
-- **Strategies Page**: Upload Python strategy files
-- **Experiments Page**: Start/stop/pause experiments with container management
-- **Analytics Page**: Charts and result comparison
+- **62 REST endpoints** across auth, workloads, platforms, scenarios, strategies,
+  experiments, results and system.
+- **272 backend tests** across unit, integration and e2e layers — 270 passing, with
+  2 e2e tests skipped when no local Docker daemon is available. Run with `pytest`.
+- Instrumented with Prometheus metrics and a provisioned Grafana dashboard.
 
-### 📋 Planned
-- **Container Orchestration**: Docker SDK integration for BatSim/PyBatsim
-- **Real-time Monitoring**: WebSocket updates for experiment progress
-- **System Monitoring**: CPU, RAM, disk usage tracking
-- **Advanced Analytics**: Comparative analysis and trend visualization
+Live experiment progress is delivered by **HTTP polling** (2 s for progress, 5 s
+for log streams), not WebSockets — chosen because simulation runs are long-lived
+and the update rate is low.
+
+## Deployment and Security
+
+**This portal is designed to run on a trusted network (lab LAN or VPN) only.**
+Do not expose it directly to the public internet. Three properties make a public
+deployment unsafe:
+
+1. The backend mounts `/var/run/docker.sock` to spawn sibling BatSim/PyBatsim
+   containers, which grants full control of the host Docker daemon.
+2. It executes user-supplied Python scheduling strategies.
+3. The default compose stack serves the frontend from the Vite dev server.
+
+Uploaded strategies are checked before execution — imports are validated against
+an allow-list by AST inspection, and dynamic-import escapes (`__import__`,
+`importlib.import_module`) are rejected at upload time rather than failing
+mid-simulation. This is a usability and safety guard, **not** a sandbox, and it
+does not change the guidance above.
+
+See `DEPLOY.md` for the lab VM deployment procedure.
 
 ## Quick Start
 
@@ -109,16 +121,21 @@ Once the backend is running, visit:
 - **React Router** for navigation
 - **Zustand** for state management
 - **Axios** for API calls
-- **Chart.js** for analytics (planned)
+- **Chart.js** for timeline, CDF and stacked-area analytics
+- **Konva** for the canvas-rendered schedule Gantt and host-utilization heatmap
+- **react-window** for virtualized rendering of large job lists
 
 ### Backend
 - **FastAPI** with automatic API documentation
 - **SQLAlchemy** with SQLite/PostgreSQL support
+- **Alembic** for schema migrations
 - **Pydantic** for data validation
-- **Docker SDK** for container management (planned)
-- **JWT** authentication
+- **Docker SDK** for BatSim/PyBatsim container orchestration
+- **JWT** authentication with role management
 - **File upload/download** handling
-- **System monitoring** with psutil (planned)
+- **defusedxml** for parsing untrusted platform descriptions
+- **System monitoring** with psutil, exported via **prometheus-client**
+- **pytest** with coverage reporting
 
 ## Development
 
