@@ -4,7 +4,8 @@ Covers:
 - GET /experiments/{id}/logs/streams — correct shape, 4 streams
 - Truncation when a stream exceeds 5 MB
 - Empty stream returns content="" + size_bytes=0
-- Auth: non-creator/non-admin → 403
+- Auth: log READ is open to any authenticated lab user (shared workspace);
+  only mutations (run/stop/delete) stay owner/admin-restricted
 - Download endpoint: invalid stream name → 400
 - Download endpoint: valid stream → 200 + Content-Disposition header
 - Legacy GET /experiments/{id}/logs still returns 2-field shape (regression)
@@ -145,7 +146,7 @@ def large_stream_experiment(db_session, test_user, create_scenario, create_strat
 
 @pytest.fixture
 def other_user_experiment(db_session, test_admin, create_scenario, create_strategy):
-    """Experiment owned by admin, used to test non-creator access denial."""
+    """Experiment owned by admin, used to test non-creator read access (now allowed under shared-workspace read)."""
     sc, _, _ = create_scenario("sc-other")
     st = create_strategy("st-other")
     exp = Experiment(
@@ -239,12 +240,14 @@ class TestLogStreamsEndpoint:
         assert data["batsim_stdout"]["truncated"] is False
         assert data["pybatsim_stdout"]["truncated"] is False
 
-    def test_auth_non_creator_non_admin_returns_403(
+    def test_auth_non_creator_can_read_streams(
         self, client, auth_headers, other_user_experiment
     ):
-        """test_user (not admin, not creator) requesting another user's experiment → 403."""
+        """Log read is open to any authenticated lab user (shared workspace):
+        a non-creator/non-admin reading another user's streams gets 200.
+        (Mutations stay owner/admin-restricted — see experiments API tests.)"""
         res = client.get(_make_streams_url(other_user_experiment.id), headers=auth_headers)
-        assert res.status_code == 403
+        assert res.status_code == 200
 
     def test_auth_admin_can_access_any_experiment(
         self, client, admin_headers, other_user_experiment
@@ -319,15 +322,16 @@ class TestDownloadEndpoint:
         expected_content = streams_res.json()["batsim_stdout"]["content"]
         assert download_res.text == expected_content
 
-    def test_download_auth_non_creator_returns_403(
+    def test_download_auth_non_creator_allowed(
         self, client, auth_headers, other_user_experiment
     ):
-        """Non-creator/non-admin download attempt → 403."""
+        """Log download is open to any authenticated lab user (shared workspace):
+        a non-creator/non-admin download attempt gets 200."""
         res = client.get(
             _make_download_url(other_user_experiment.id, "batsim_stdout"),
             headers=auth_headers,
         )
-        assert res.status_code == 403
+        assert res.status_code == 200
 
 
 class TestLegacyLogsEndpoint:
